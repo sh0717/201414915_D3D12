@@ -18,7 +18,7 @@ Agility SDK는 NuGet패키지로서 업데이트 됩니다.
 
 
 ## Requirements
-Visual Studio 2022 , Windows 10/11
+Visual Studio 2022/2026, Windows 10/11
 
 ## How to build
 1. Open .sln in Visual Studio.
