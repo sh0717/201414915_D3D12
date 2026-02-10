@@ -1,0 +1,45 @@
+# Visual Studio
+.vs/
+*.VC.db
+*.VC.opendb
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.ipch
+*.vspscc
+*.vssscc
+
+# Build intermediates and logs
+*.obj
+*.o
+*.lo
+*.slo
+*.pch
+*.pdb
+*.ilk
+*.exp
+*.idb
+*.log
+*.recipe
+*.tlog
+*.lastbuildstate
+
+# Binaries and libraries
+*.exe
+*.dll
+*.lib
+*.a
+*.so
+*.dylib
+*.app
+*.out
+
+# NuGet restore output
+packages/
+
+# Project-specific build outputs
+Bengals/x64/
+
+# Local study/reference folder
+d3d12book-master/

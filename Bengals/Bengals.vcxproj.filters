@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Renderer">
+      <UniqueIdentifier>{0b1ca0ec-5f2c-4fe1-a7e4-f6c4b8809c8e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Renderer\BasicMeshObject">
+      <UniqueIdentifier>{5586095b-8c28-4ca5-87c0-b38221963850}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Renderer\RenderHelper">
+      <UniqueIdentifier>{16007695-cdc3-49ab-ab62-197f3d14fbc4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Renderer\ResourceManager">
+      <UniqueIdentifier>{d52d75f5-cd41-4ad8-970f-69d3ac62a6e9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Renderer\Shaders">
+      <UniqueIdentifier>{19a5358a-9ac9-4638-a5c8-08e78b0fbca9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Types">
+      <UniqueIdentifier>{927795c1-677b-4eae-aa5f-6e5e1679f8f0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Util">
+      <UniqueIdentifier>{72b86337-a0db-45ee-b08e-86768b800744}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="main">
+      <UniqueIdentifier>{fbe01f4d-cd52-477b-abab-71a365654868}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Renderer\D3D12Renderer.h">
+      <Filter>Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Renderer\BasicMeshObject\BasicMeshObject.h">
+      <Filter>Renderer\BasicMeshObject</Filter>
+    </ClInclude>
+    <ClInclude Include="Renderer\RenderHelper\ShaderVisibleDescriptorTableAllocator.h">
+      <Filter>Renderer\RenderHelper</Filter>
+    </ClInclude>
+    <ClInclude Include="Renderer\RenderHelper\ConstantBufferPool.h">
+      <Filter>Renderer\RenderHelper</Filter>
+    </ClInclude>
+    <ClInclude Include="Renderer\RenderHelper\DescriptorAllocator.h">
+      <Filter>Renderer\RenderHelper</Filter>
+    </ClInclude>
+    <ClInclude Include="Renderer\ResourceManager\CD3D12ResourceManager.h">
+      <Filter>Renderer\ResourceManager</Filter>
+    </ClInclude>
+    <ClInclude Include="Types\typedef.h">
+      <Filter>Types</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Util\D3DUtil.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Util\IndexCreator.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="Resource.h" />
+    <ClInclude Include="targetver.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Renderer\D3D12Renderer.cpp">
+      <Filter>Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="Renderer\BasicMeshObject\BasicMeshObject.cpp">
+      <Filter>Renderer\BasicMeshObject</Filter>
+    </ClCompile>
+    <ClCompile Include="Renderer\RenderHelper\ShaderVisibleDescriptorTableAllocator.cpp">
+      <Filter>Renderer\RenderHelper</Filter>
+    </ClCompile>
+    <ClCompile Include="Renderer\RenderHelper\ConstantBufferPool.cpp">
+      <Filter>Renderer\RenderHelper</Filter>
+    </ClCompile>
+    <ClCompile Include="Renderer\RenderHelper\DescriptorAllocator.cpp">
+      <Filter>Renderer\RenderHelper</Filter>
+    </ClCompile>
+    <ClCompile Include="Renderer\ResourceManager\CD3D12ResourceManager.cpp">
+      <Filter>Renderer\ResourceManager</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Util\D3DUtil.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Util\IndexCreator.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="pch.cpp" />
+    <ClCompile Include="main.cpp">
+      <Filter>main</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Renderer\Shaders\DefaultShader.hlsl">
+      <Filter>Renderer\Shaders</Filter>
+    </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Bengals.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Bengals.ico" />
+    <Image Include="small.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
+  </ItemGroup>
+</Project>
