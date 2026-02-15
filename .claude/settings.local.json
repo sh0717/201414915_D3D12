@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:glittery-capri-4d8.notion.site)",
+      "Bash(curl:*)",
+      "Bash(python -c:*)",
+      "Bash(done)",
+      "Bash(powershell -Command:*)",
+      "Bash(wc:*)",
+      "Bash(powershell -NoProfile -File:*)",
+      "Bash(powershell -NoProfile -Command:*)",
+      "Bash(powershell -NoProfile -EncodedCommand \"RwBlAHQALQBDAGgAaQBsAGQASQB0AGUAbQAgACcAQwA6AFwAVQBzAGUAcgBzAFwAZgBvAHIAZABlAFwARABvAGMAdQBtAGUAbgB0AHMAXABCAGUAbgBnAGEAbABHAGEAbQBlAHMAXABEAG8AYwBzAFwARADMAEQAMQAyAF8AVABlAHgAdABiAG8AbwBrAFwAKgAuAG0AZAAnACAAfAAgAFMAbwByAHQALQBPAGIAagBlAGMAdAAgAE4AYQBtAGUAIAB8ACAARgBvAHIARQBhAGMAaAAtAE8AYgBqAGUAYwB0ACAAewAgACQAbAA9ACgARwBlAHQALQBDAG8AbgB0AGUAbgB0ACAAJABfAC4ARgB1AGwAbABOAGEAbQBlACkALgBDAG8AdQBuAHQAOwAgACIAJAAoACQAbAAuAFQAbwBTAHQAcgBpAG4AZwAoACkALgBQAGEAZABMAGUAZgB0ACgANQApACkAIAB8ACAAJAAoACQAXwAuAE4AYQBtAGUAKQAiACAAfQA=\")",
+      "Bash(python3:*)",
+      "Bash(pip install:*)",
+      "Bash(pip show:*)"
+    ]
+  }
+}
