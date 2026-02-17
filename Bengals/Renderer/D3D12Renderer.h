@@ -57,7 +57,10 @@ public:/*function*/
 	bool UpdateWindowSize(UINT backBufferWidth, UINT backBufferHeight);
 
 	void* CreateBasicMeshObject();
-	void RenderMeshObject(void* pMeshObjectHandle, const XMMATRIX& worldMatrix, void* pTextureHandle = nullptr);
+	bool BeginCreateMesh(void* pMeshObjectHandle, const void* pVertexList, UINT vertexCount, UINT vertexSize, UINT triGroupCount);
+	bool InsertTriGroup(void* pMeshObjectHandle, const WORD* pIndexList, UINT triCount, const WCHAR* wchTexFileName);
+	void EndCreateMesh(void* pMeshObjectHandle);
+	void RenderMeshObject(void* pMeshObjectHandle, const XMMATRIX& worldMatrix);
 	void DeleteBasicMeshObject(void* pMeshObjectHandle);
 
 	void* CreateTiledTexture(UINT texWidth, UINT texHeight, BYTE r, BYTE g, BYTE b);

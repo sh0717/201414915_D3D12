@@ -41,3 +41,11 @@ struct TextureHandle
 	ID3D12Resource* TextureResource;
 	D3D12_CPU_DESCRIPTOR_HANDLE SrvDescriptorHandle;
 };
+
+struct IndexedTriGroup
+{
+	ComPtr<ID3D12Resource> IndexBuffer = nullptr;
+	D3D12_INDEX_BUFFER_VIEW IndexBufferView = {};
+	UINT TriangleCount = 0;
+	TextureHandle* pTexHandle = nullptr;
+};

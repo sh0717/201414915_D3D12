@@ -51,7 +51,17 @@
       "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" \"C:/Users/forde/Documents/BengalGames/Bengals/Bengals.sln\" /t:Build /p:Configuration=Debug /p:Platform=x64)",
       "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" \"C:\\\\Users\\\\forde\\\\Documents\\\\BengalGames\\\\Bengals\\\\Bengals.sln\" -t:Build -p:Configuration=Debug -p:Platform=x64)",
       "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" \"C:\\\\Users\\\\forde\\\\Documents\\\\BengalGames\\\\Bengals\\\\Bengals.vcxproj\" -t:Build -p:Configuration=Debug -p:Platform=x64)",
-      "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" \"C:\\\\Users\\\\forde\\\\Documents\\\\BengalGames\\\\Bengals\\\\Bengals.sln\" -t:Build -p:Configuration=Debug -p:Platform=x64 -p:PlatformToolset=v143)"
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" \"C:\\\\Users\\\\forde\\\\Documents\\\\BengalGames\\\\Bengals\\\\Bengals.sln\" -t:Build -p:Configuration=Debug -p:Platform=x64 -p:PlatformToolset=v143)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" ./Bengals/Bengals.sln /t:Build /p:Configuration=Debug /p:Platform=x64 /m)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" \"./Bengals/Bengals.sln\" -t:Build -p:Configuration=Debug -p:Platform=x64 -m)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" \"./Bengals/Bengals.sln\" -t:Build -p:Configuration=Debug -p:Platform=x64 -p:BuildProjectReferences=false -m)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" \"./Bengals/Bengals.sln\" -t:Build -p:Configuration=Debug -p:Platform=x64 -p:PlatformToolset=v143 -m)",
+      "WebFetch(domain:registry.khronos.org)",
+      "WebFetch(domain:dev.epicgames.com)",
+      "Bash(gh api:*)",
+      "WebFetch(domain:docs.vulkan.org)",
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

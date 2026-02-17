@@ -73,10 +73,10 @@ bool CD3D12Renderer::Initialize(HWND hWindow, bool bEnableDebugLayer, bool bEnab
 			D3D_FEATURE_LEVEL_11_1,
 			D3D_FEATURE_LEVEL_11_0
 		};
-		UINT featureLevelNum = _countof(featureLevels);
+		UINT featureLevelCount = _countof(featureLevels);
 
 		bool bDeviceCreated = false;
-		for (UINT index = 0; index < featureLevelNum; index++)
+		for (UINT index = 0; index < featureLevelCount; index++)
 		{
 			if (bDeviceCreated)
 			{
@@ -210,7 +210,7 @@ bool CD3D12Renderer::Initialize(HWND hWindow, bool bEnableDebugLayer, bool bEnab
 		FrameContext& ctx = m_frameContexts[i];
 
 		ctx.DescriptorPool = std::make_unique<CGpuDescriptorLinearAllocator>();
-		ctx.DescriptorPool->Initialize(m_pD3DDevice, MAX_DRAW_COUNT_PER_FRAME * CBasicMeshObject::DescriptorCountPerDraw);
+		ctx.DescriptorPool->Initialize(m_pD3DDevice, MAX_DRAW_COUNT_PER_FRAME * CBasicMeshObject::MaxDescriptorCountForDraw);
 
 		ctx.ConstantBufferPool = std::make_unique<CConstantBufferPool>();
 		ctx.ConstantBufferPool->Initialize(m_pD3DDevice, static_cast<UINT>(AlignConstantBufferSize(sizeof(ConstantBufferDefault))), MAX_DRAW_COUNT_PER_FRAME);
@@ -374,20 +374,31 @@ bool CD3D12Renderer::UpdateWindowSize(UINT backBufferWidth, UINT backBufferHeigh
 void* CD3D12Renderer::CreateBasicMeshObject()
 {
 	CBasicMeshObject* pMeshObject = new CBasicMeshObject{this};
-	pMeshObject->CreateMesh();
 	return pMeshObject;
 }
 
-void CD3D12Renderer::RenderMeshObject(void* pMeshObjectHandle, const XMMATRIX& worldMatrix, void* pTextureHandle)
+bool CD3D12Renderer::BeginCreateMesh(void* pMeshObjectHandle, const void* pVertexList, UINT vertexCount, UINT vertexSize, UINT triGroupCount)
 {
-	D3D12_CPU_DESCRIPTOR_HANDLE srvDescriptorHandle = {};
-	if (pTextureHandle)
-	{
-		srvDescriptorHandle = ((TextureHandle*)pTextureHandle)->SrvDescriptorHandle;
-	}
-
 	CBasicMeshObject* pMeshObj = (CBasicMeshObject*)pMeshObjectHandle;
-	pMeshObj->Draw(m_frameContexts[m_currentContextIndex].pCommandList, worldMatrix, srvDescriptorHandle);
+	return pMeshObj->BeginCreateMesh(pVertexList, vertexCount, vertexSize, triGroupCount);
+}
+
+bool CD3D12Renderer::InsertTriGroup(void* pMeshObjectHandle, const WORD* pIndexList, UINT triCount, const WCHAR* wchTexFileName)
+{
+	CBasicMeshObject* pMeshObj = (CBasicMeshObject*)pMeshObjectHandle;
+	return pMeshObj->InsertIndexedTriList(pIndexList, triCount, wchTexFileName);
+}
+
+void CD3D12Renderer::EndCreateMesh(void* pMeshObjectHandle)
+{
+	CBasicMeshObject* pMeshObj = (CBasicMeshObject*)pMeshObjectHandle;
+	pMeshObj->EndCreateMesh();
+}
+
+void CD3D12Renderer::RenderMeshObject(void* pMeshObjectHandle, const XMMATRIX& worldMatrix)
+{
+	CBasicMeshObject* pMeshObj = (CBasicMeshObject*)pMeshObjectHandle;
+	pMeshObj->Draw(m_frameContexts[m_currentContextIndex].pCommandList, worldMatrix);
 }
 
 void CD3D12Renderer::DeleteBasicMeshObject(void* pMeshObjectHandle)

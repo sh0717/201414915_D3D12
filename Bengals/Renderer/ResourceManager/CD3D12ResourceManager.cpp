@@ -244,10 +244,10 @@ HRESULT CD3D12ResourceManager::CreateIndexBuffer(const UINT indexCount, D3D12_IN
 
 void CD3D12ResourceManager::UpdateTextureForWrite(ID3D12Resource* pDestTexResource, ID3D12Resource* pSrcTexResource)
 {
-	const DWORD MAX_SUB_RESOURCE_NUM = 32;
-	D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint[MAX_SUB_RESOURCE_NUM] = {};
-	UINT	rows[MAX_SUB_RESOURCE_NUM] = {};
-	UINT64	rowSize[MAX_SUB_RESOURCE_NUM] = {};
+	constexpr UINT MAX_SUB_RESOURCE_COUNT = 32;
+	D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint[MAX_SUB_RESOURCE_COUNT] = {};
+	UINT	rows[MAX_SUB_RESOURCE_COUNT] = {};
+	UINT64	rowSize[MAX_SUB_RESOURCE_COUNT] = {};
 	UINT64	totalBytes = 0;
 
 	D3D12_RESOURCE_DESC desc = pDestTexResource->GetDesc();
@@ -400,8 +400,8 @@ bool CD3D12ResourceManager::CreateTextureFromFile(ID3D12Resource** ppOutResource
 		return false;
 	}
 
-	UINT numSubresources = static_cast<UINT>(subresources.size());
-	UINT64 uploadBufferSize = GetRequiredIntermediateSize(texResource.Get(), 0, numSubresources);
+	UINT subresourceCount = static_cast<UINT>(subresources.size());
+	UINT64 uploadBufferSize = GetRequiredIntermediateSize(texResource.Get(), 0, subresourceCount);
 
 	ComPtr<ID3D12Resource> uploadBuffer;
 	hr = m_pD3DDevice->CreateCommittedResource(
@@ -439,7 +439,7 @@ bool CD3D12ResourceManager::CreateTextureFromFile(ID3D12Resource** ppOutResource
 		texResource.Get(),
 		uploadBuffer.Get(),
 		0, 0,
-		numSubresources,
+		subresourceCount,
 		subresources.data());
 
 	m_commandList->ResourceBarrier(1,

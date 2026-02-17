@@ -1,5 +1,8 @@
 #pragma once
 
+struct IndexedTriGroup;
+class CD3D12Renderer;
+
 class CBasicMeshObject
 {
 	friend class CD3D12Renderer;
@@ -15,25 +18,21 @@ private: /*function*/
 	bool InitRootSignature();
 	bool InitPipelineState();
 
-	/**
-	 * Create vertex buffer and index buffer
-	 */
-	bool CreateMesh();
+	bool BeginCreateMesh(const void* pVertexList, UINT vertexCount, UINT vertexSize, UINT triGroupCount);
+	bool InsertIndexedTriList(const WORD* pIndexList, UINT triCount, const WCHAR* texFileName);
+	void EndCreateMesh();
 
-	void Draw(ID3D12GraphicsCommandList* pCommandList, const XMMATRIX& worldMatrix, D3D12_CPU_DESCRIPTOR_HANDLE srvDescriptorHandle);
+	void Draw(ID3D12GraphicsCommandList* pCommandList, const XMMATRIX& worldMatrix);
 
 	void Clean();
 	void CleanSharedResource();
+	void CleanTriGroups();
 
 private: /*variable*/
-	enum BasicMeshDescriptorIndex
-	{
-		BasicMeshDescriptorIndexCbv = 0,
-		BasicMeshDescriptorIndexSrv = 1,
-		BasicMeshDescriptorCount = 2,
-	};
-
-	static constexpr UINT DescriptorCountPerDraw = BasicMeshDescriptorCount;
+	static constexpr UINT DescriptorCountPerObj = 1;
+	static constexpr UINT DescriptorCountPerTriGroup = 1;
+	static constexpr UINT MaxTriGroupCountPerObj = 8;
+	static constexpr UINT MaxDescriptorCountForDraw = DescriptorCountPerObj + (MaxTriGroupCountPerObj * DescriptorCountPerTriGroup);
 
 	static ID3D12RootSignature* m_pRootSignature;
 	static ID3D12PipelineState* m_pPipelineStateObject;
@@ -44,6 +43,7 @@ private: /*variable*/
 	ComPtr<ID3D12Resource> m_vertexBuffer = nullptr;
 	D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView = {};
 
-	ComPtr<ID3D12Resource> m_indexBuffer = nullptr;
-	D3D12_INDEX_BUFFER_VIEW m_indexBufferView = {};
+	std::unique_ptr<IndexedTriGroup[]> m_triGroupList;
+	UINT m_maxTriGroupCount = 0;
+	UINT m_triGroupCount = 0;
 };

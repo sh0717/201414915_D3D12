@@ -39,4 +39,7 @@ using namespace Microsoft::WRL;
 #include <memory.h>
 #include <tchar.h>
 
+// C++ Standard Library
+#include <memory>
+
 #endif //PCH_H

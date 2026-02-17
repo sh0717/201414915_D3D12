@@ -5,6 +5,7 @@
 #include <cstdarg>
 #include "Resource.h"
 #include "Renderer/D3D12Renderer.h"
+#include "Types/typedef.h"
 
 // required .lib files
 #pragma comment(lib, "DXGI.lib")
@@ -19,7 +20,7 @@ extern "C" { __declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001; }
 //////////////////////////////////////////////////////////////////////////////////////////////////////
 // D3D12 Agility SDK Runtime
 
-//extern "C" { __declspec(dllexport) extern const UINT D3D12SDKVersion = 614; }	
+//extern "C" { __declspec(dllexport) extern const UINT D3D12SDKVersion = 614; }
 
 //#if defined(_M_ARM64EC)
 //	extern "C" { __declspec(dllexport) extern const char* D3D12SDKPath = u8".\\D3D12\\arm64\\"; }
@@ -41,13 +42,8 @@ WCHAR g_title[MAX_LOADSTRING];                  // The title bar text
 WCHAR g_windowClass[MAX_LOADSTRING];            // the main window class name
 
 std::unique_ptr<CD3D12Renderer> g_renderer = nullptr;
-void* g_pMeshObject = nullptr;
-void* g_pTextureHandle0 = nullptr;
-void* g_pTextureHandle1 = nullptr;
-
-float g_offsetX = 0.0f;
-float g_offsetY = 0.0f;
-float g_speed = 0.015f;
+void* g_pMeshObject0 = nullptr;
+void* g_pMeshObject1 = nullptr;
 
 XMMATRIX g_worldMatrix0 = {};
 XMMATRIX g_worldMatrix1 = {};
@@ -103,10 +99,33 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	{
 		__debugbreak();
 	}
-	
-	g_pMeshObject = g_renderer->CreateBasicMeshObject();
-	g_pTextureHandle0 = g_renderer->CreateTiledTexture(16, 16, 192, 128, 255);
-	g_pTextureHandle1 = g_renderer->CreateTextureFromFile(L"../Resources/Image/miku.dds");
+
+	// quad vertices (shared by all tri-groups)
+	VertexPos3Color4Tex2 vertices[] =
+	{
+		{ { -0.25f,  0.25f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.f, 0.f } },
+		{ {  0.25f,  0.25f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.f, 0.f } },
+		{ {  0.25f, -0.25f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.f, 1.f } },
+		{ { -0.25f, -0.25f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.f, 1.f } }
+	};
+
+	// mesh0: multi-material (2 tri-groups, each triangle has a different texture)
+	WORD indicesGroup0[] = { 0, 1, 2 };
+	WORD indicesGroup1[] = { 0, 2, 3 };
+
+	g_pMeshObject0 = g_renderer->CreateBasicMeshObject();
+	g_renderer->BeginCreateMesh(g_pMeshObject0, vertices, _countof(vertices), sizeof(VertexPos3Color4Tex2), 2);
+	g_renderer->InsertTriGroup(g_pMeshObject0, indicesGroup0, 1, L"../Resources/Image/tex_00.dds");
+	g_renderer->InsertTriGroup(g_pMeshObject0, indicesGroup1, 1, L"../Resources/Image/tex_01.dds");
+	g_renderer->EndCreateMesh(g_pMeshObject0);
+
+	// mesh1: single material (1 tri-group)
+	WORD indicesFull[] = { 0, 1, 2, 0, 2, 3 };
+
+	g_pMeshObject1 = g_renderer->CreateBasicMeshObject();
+	g_renderer->BeginCreateMesh(g_pMeshObject1, vertices, _countof(vertices), sizeof(VertexPos3Color4Tex2), 1);
+	g_renderer->InsertTriGroup(g_pMeshObject1, indicesFull, 2, L"../Resources/Image/miku.dds");
+	g_renderer->EndCreateMesh(g_pMeshObject1);
 	// Main message loop:
 	//while (GetMessage(&msg, nullptr, 0, 0))
 	//{
@@ -136,21 +155,15 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 		}
 	}
 
-	if (g_pMeshObject)
+	if (g_pMeshObject0)
 	{
-		g_renderer->DeleteBasicMeshObject(g_pMeshObject);
-		g_pMeshObject = nullptr;
+		g_renderer->DeleteBasicMeshObject(g_pMeshObject0);
+		g_pMeshObject0 = nullptr;
 	}
-
-	if (g_pTextureHandle0)
+	if (g_pMeshObject1)
 	{
-		g_renderer->DeleteTexture(g_pTextureHandle0);
-		g_pTextureHandle0 = nullptr;
-	}
-	if (g_pTextureHandle1)
-	{
-		g_renderer->DeleteTexture(g_pTextureHandle1);
-		g_pTextureHandle1 = nullptr;
+		g_renderer->DeleteBasicMeshObject(g_pMeshObject1);
+		g_pMeshObject1 = nullptr;
 	}
 
 
@@ -178,9 +191,8 @@ void RunGame()
 	}
 
 	// rendering objects
-	//g_renderer->RenderMeshObject(g_pMeshObject, g_offsetX, g_offsetY);
-	g_renderer->RenderMeshObject(g_pMeshObject, g_worldMatrix0, g_pTextureHandle0);
-	g_renderer->RenderMeshObject(g_pMeshObject, g_worldMatrix1, g_pTextureHandle1);
+	g_renderer->RenderMeshObject(g_pMeshObject0, g_worldMatrix0);
+	g_renderer->RenderMeshObject(g_pMeshObject1, g_worldMatrix1);
 	g_renderer->EndRender();
 	g_renderer->Present();
 
