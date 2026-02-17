@@ -8,35 +8,36 @@ struct ConstantBufferContainer
 };
 
 /**
- * 매 프레임마다 Reset 을 호출해 처음부터 할당하도록 합니다.
+ * 프레임 단위 constant buffer 선형 할당기
+ *
+ * 단일 upload heap 위에 사전 생성된 CBV 배열을 보유하며,
+ * draw call마다 Allocate()로 다음 슬롯을 반환하고,
+ * 매 프레임 Reset()으로 오프셋을 0으로 되돌려 전체를 재사용합니다.
  */
 class CConstantBufferPool
 {
 public:
 	CConstantBufferPool() = default;
-	~CConstantBufferPool();
+	~CConstantBufferPool() = default;
 
 	bool Initialize(ID3D12Device5* pD3DDevice, UINT sizePerConstantBuffer, UINT maxCbvCount);
 
-	inline ID3D12DescriptorHeap* GetDescriptorHeap() const
+	ID3D12DescriptorHeap* GetDescriptorHeap() const
 	{
-		return m_pCbvDescriptorHeap;
+		return m_cbvDescriptorHeap.Get();
 	}
 
 	ConstantBufferContainer* Allocate();
 	void Reset();
 
 private:
-	void Cleanup();
-
-private:
-	ConstantBufferContainer* m_pConstantBufferContainerList = nullptr;
+	std::unique_ptr<ConstantBufferContainer[]> m_constantBufferContainerList = nullptr;
 
 	UINT m_allocatedCbvCount = 0;
 	UINT m_maxCbvCount = 0;
 	UINT m_sizePerConstantBuffer = 0;
 
-	ID3D12Resource* m_pConstantBufferChunk = nullptr;
-	ID3D12DescriptorHeap* m_pCbvDescriptorHeap = nullptr;
+	ComPtr<ID3D12Resource> m_constantBufferChunk = nullptr;
+	ComPtr<ID3D12DescriptorHeap> m_cbvDescriptorHeap = nullptr;
 	UINT8* m_pSystemAddressForStart = nullptr;
 };

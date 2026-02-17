@@ -33,13 +33,13 @@
     <ClInclude Include="Renderer\BasicMeshObject\BasicMeshObject.h">
       <Filter>Renderer\BasicMeshObject</Filter>
     </ClInclude>
-    <ClInclude Include="Renderer\RenderHelper\ShaderVisibleDescriptorTableAllocator.h">
+    <ClInclude Include="Renderer\RenderHelper\GpuDescriptorLinearAllocator.h">
       <Filter>Renderer\RenderHelper</Filter>
     </ClInclude>
     <ClInclude Include="Renderer\RenderHelper\ConstantBufferPool.h">
       <Filter>Renderer\RenderHelper</Filter>
     </ClInclude>
-    <ClInclude Include="Renderer\RenderHelper\DescriptorAllocator.h">
+    <ClInclude Include="Renderer\RenderHelper\CpuDescriptorFreeListAllocator.h">
       <Filter>Renderer\RenderHelper</Filter>
     </ClInclude>
     <ClInclude Include="Renderer\ResourceManager\CD3D12ResourceManager.h">
@@ -65,13 +65,13 @@
     <ClCompile Include="Renderer\BasicMeshObject\BasicMeshObject.cpp">
       <Filter>Renderer\BasicMeshObject</Filter>
     </ClCompile>
-    <ClCompile Include="Renderer\RenderHelper\ShaderVisibleDescriptorTableAllocator.cpp">
+    <ClCompile Include="Renderer\RenderHelper\GpuDescriptorLinearAllocator.cpp">
       <Filter>Renderer\RenderHelper</Filter>
     </ClCompile>
     <ClCompile Include="Renderer\RenderHelper\ConstantBufferPool.cpp">
       <Filter>Renderer\RenderHelper</Filter>
     </ClCompile>
-    <ClCompile Include="Renderer\RenderHelper\DescriptorAllocator.cpp">
+    <ClCompile Include="Renderer\RenderHelper\CpuDescriptorFreeListAllocator.cpp">
       <Filter>Renderer\RenderHelper</Filter>
     </ClCompile>
     <ClCompile Include="Renderer\ResourceManager\CD3D12ResourceManager.cpp">

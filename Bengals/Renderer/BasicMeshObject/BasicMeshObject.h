@@ -41,9 +41,9 @@ private: /*variable*/
 
 	CD3D12Renderer* m_pRenderer = nullptr;
 
-	ID3D12Resource* m_pVertexBuffer = nullptr;
+	ComPtr<ID3D12Resource> m_vertexBuffer = nullptr;
 	D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView = {};
 
-	ID3D12Resource* m_pIndexBuffer = nullptr;
+	ComPtr<ID3D12Resource> m_indexBuffer = nullptr;
 	D3D12_INDEX_BUFFER_VIEW m_indexBufferView = {};
 };

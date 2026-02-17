@@ -1,76 +1,114 @@
 #include "pch.h"
 #include "CD3D12ResourceManager.h"
-
-#include <cassert>
+#include <DDSTextureLoader.h>
 
 
 CD3D12ResourceManager::~CD3D12ResourceManager()
 {
-	Clean();
+	WaitForFenceValue();
+
+	if (m_fenceEvent)
+	{
+		CloseHandle(m_fenceEvent);
+		m_fenceEvent = nullptr;
+	}
 }
 
 bool CD3D12ResourceManager::Initialize(ID3D12Device5* pD3DDevice)
 {
-	bool bResult = false;
-
+	if (!pD3DDevice)
+	{
+		__debugbreak();
+		return false;
+	}
 	m_pD3DDevice = pD3DDevice;
-	assert(m_pD3DDevice);
-
 	HRESULT hr;
 
 	D3D12_COMMAND_QUEUE_DESC commandQueueDesc = {};
 	commandQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 	commandQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-	hr = m_pD3DDevice->CreateCommandQueue(&commandQueueDesc, IID_PPV_ARGS(&m_pCommandQueue));
+	hr = m_pD3DDevice->CreateCommandQueue(&commandQueueDesc, IID_PPV_ARGS(m_commandQueue.ReleaseAndGetAddressOf()));
 	if (FAILED(hr))
 	{
 		__debugbreak();
-		return bResult;
+		return false;
 	}
 
-	hr = m_pD3DDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_pCommandAllocator));
-
+	hr = m_pD3DDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(m_commandAllocator.ReleaseAndGetAddressOf()));
 	if (FAILED(hr))
 	{
 		__debugbreak();
-		return bResult;
+		return false;
 	}
 
-	hr = m_pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_pCommandAllocator, nullptr, IID_PPV_ARGS(&m_pCommandList));
-
+	hr = m_pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(), nullptr, IID_PPV_ARGS(m_commandList.ReleaseAndGetAddressOf()));
 	if (FAILED(hr))
 	{
 		__debugbreak();
-		return bResult;
+		return false;
 	}
-	m_pCommandList->Close();
+	m_commandList->Close();
 
-
-	hr = m_pD3DDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_pFence));
+	hr = m_pD3DDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(m_fence.ReleaseAndGetAddressOf()));
 	if (FAILED(hr))
 	{
 		__debugbreak();
-		return bResult;
+		return false;
+	}
+
+	m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+	if (!m_fenceEvent)
+	{
+		__debugbreak();
+		return false;
 	}
 
 	m_fenceValue = 0;
-	return bResult = true;
+	return true;
 }
 
-HRESULT CD3D12ResourceManager::CreateVertexBuffer(UINT sizePerVertex, UINT vertexCount, D3D12_VERTEX_BUFFER_VIEW* pOutVertexBufferView, ID3D12Resource** ppOutBuffer, void* pInInitData)
+HRESULT CD3D12ResourceManager::CreateVertexBuffer(const UINT sizePerVertex, const UINT vertexCount, D3D12_VERTEX_BUFFER_VIEW* pOutVertexBufferView, ID3D12Resource** ppOutBuffer, const void* pInInitData)
 {
+	*pOutVertexBufferView = {};
+	*ppOutBuffer = nullptr;
+
+	if (!m_pD3DDevice || !pInInitData)
+	{
+		__debugbreak();
+		return E_FAIL;
+	}
+
 	HRESULT hr = S_OK;
 
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView = {};
 
-	ID3D12Resource* pVertexBufferInGPU = nullptr;
-	ComPtr<ID3D12Resource> pUploadBuffer = nullptr;
+	ComPtr<ID3D12Resource> vertexBuffer;
+	ComPtr<ID3D12Resource> uploadBuffer;
 	UINT bufferSize = sizePerVertex * vertexCount;
 
-	assert(m_pD3DDevice);
 	hr = m_pD3DDevice->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(bufferSize), 
-		D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&pVertexBufferInGPU));
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(bufferSize),
+		D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(vertexBuffer.ReleaseAndGetAddressOf()));
+
+	if (FAILED(hr))
+	{
+		__debugbreak();
+		return hr;
+	}
+	
+	hr = m_pD3DDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(bufferSize), D3D12_RESOURCE_STATE_COMMON,
+		nullptr, IID_PPV_ARGS(uploadBuffer.ReleaseAndGetAddressOf()));
+
+	if (FAILED(hr))
+	{
+		__debugbreak();
+		return hr;
+	}
+	
+	UINT8* pVertexDataBegin = nullptr;
+	CD3DX12_RANGE readRange(0, 0);
+	hr = uploadBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin));
 
 	if (FAILED(hr))
 	{
@@ -78,81 +116,67 @@ HRESULT CD3D12ResourceManager::CreateVertexBuffer(UINT sizePerVertex, UINT verte
 		return hr;
 	}
 
-	if (pInInitData)
+	memcpy(pVertexDataBegin, pInInitData, bufferSize);
+	uploadBuffer->Unmap(0, nullptr);
+
+	hr = m_commandAllocator->Reset();
+	if (FAILED(hr))
 	{
-		hr = m_pD3DDevice->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(bufferSize), D3D12_RESOURCE_STATE_COMMON,
-			nullptr, IID_PPV_ARGS(&pUploadBuffer));
-
-		if (FAILED(hr))
-		{
-			__debugbreak();
-			return hr;
-		}
-		
-		UINT8* pVertexDataBegin = nullptr;
-		CD3DX12_RANGE readRange(0, 0);
-		hr = pUploadBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin));
-
-		if (FAILED(hr))
-		{
-			__debugbreak();
-			return hr;
-		}
-
-		memcpy(pVertexDataBegin, pInInitData, bufferSize);
-		pUploadBuffer->Unmap(0, nullptr);
-
-		hr = m_pCommandAllocator->Reset();
-		if (FAILED(hr))
-		{
-			__debugbreak();
-			return hr;
-		}
-
-		hr = m_pCommandList->Reset(m_pCommandAllocator, nullptr);
-		if (FAILED(hr))
-		{
-			__debugbreak();
-			return hr;
-		}
-
-		m_pCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pVertexBufferInGPU, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST));
-		m_pCommandList->CopyBufferRegion(pVertexBufferInGPU, 0, pUploadBuffer.Get(), 0, bufferSize);
-		m_pCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pVertexBufferInGPU, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
-		m_pCommandList->Close();
-
-		ID3D12CommandList* ppCommandLists[] = { m_pCommandList };
-		m_pCommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-
-		Fence();
-		WaitForFenceValue();
+		__debugbreak();
+		return hr;
 	}
 
-	vertexBufferView.BufferLocation = pVertexBufferInGPU->GetGPUVirtualAddress();
+	hr = m_commandList->Reset(m_commandAllocator.Get(), nullptr);
+	if (FAILED(hr))
+	{
+		__debugbreak();
+		return hr;
+	}
+
+	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST));
+	m_commandList->CopyBufferRegion(vertexBuffer.Get(), 0, uploadBuffer.Get(), 0, bufferSize);
+	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(vertexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER));
+	m_commandList->Close();
+
+	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
+	m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+	/////////////////
+	Fence();
+	WaitForFenceValue();
+	////////////////
+
+	vertexBufferView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
 	vertexBufferView.SizeInBytes = bufferSize;
 	vertexBufferView.StrideInBytes = sizePerVertex;
 
 	*pOutVertexBufferView = vertexBufferView;
-	*ppOutBuffer = pVertexBufferInGPU;
+	*ppOutBuffer = vertexBuffer.Detach();
 
 	return hr;
 }
 
-HRESULT CD3D12ResourceManager::CreateIndexBuffer(UINT indexCount, D3D12_INDEX_BUFFER_VIEW* pOutIndexBufferView, ID3D12Resource** ppOutBuffer, void* pInitData)
+HRESULT CD3D12ResourceManager::CreateIndexBuffer(const UINT indexCount, D3D12_INDEX_BUFFER_VIEW* pOutIndexBufferView, ID3D12Resource** ppOutBuffer, const void* pInitData)
 {
-	HRESULT hr = S_OK;
+	*pOutIndexBufferView = {};
+	*ppOutBuffer = nullptr;
 
+	if (!m_pD3DDevice || !pInitData)
+	{
+		__debugbreak();
+		return E_FAIL;
+	}
+
+	HRESULT hr = S_OK;
 
 	D3D12_INDEX_BUFFER_VIEW indexBufferView = {};
 
-	ID3D12Resource* pIndexBuffer = nullptr;
-	ComPtr<ID3D12Resource> pUploadBuffer = nullptr;
+	ComPtr<ID3D12Resource> indexBuffer;
+	ComPtr<ID3D12Resource> uploadBuffer;
 	UINT bufferSize = indexCount * sizeof(WORD);
 
-	assert(m_pD3DDevice);
 	hr = m_pD3DDevice->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(bufferSize),
-		D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&pIndexBuffer));
+		D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(indexBuffer.ReleaseAndGetAddressOf()));
 
 	if (FAILED(hr))
 	{
@@ -160,64 +184,60 @@ HRESULT CD3D12ResourceManager::CreateIndexBuffer(UINT indexCount, D3D12_INDEX_BU
 		return hr;
 	}
 
-	if (pInitData)
+	hr = m_pD3DDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(bufferSize), D3D12_RESOURCE_STATE_COMMON,
+		nullptr, IID_PPV_ARGS(uploadBuffer.ReleaseAndGetAddressOf()));
+
+	if (FAILED(hr))
 	{
-		hr = m_pD3DDevice->CreateCommittedResource(
-			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(bufferSize), D3D12_RESOURCE_STATE_COMMON,
-			nullptr, IID_PPV_ARGS(pUploadBuffer.ReleaseAndGetAddressOf()));
-
-		if (FAILED(hr))
-		{
-			__debugbreak();
-			return hr;
-		}
-
-		UINT8* pIndexDataBegin = nullptr;
-		CD3DX12_RANGE readRange(0, 0);
-		hr = pUploadBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pIndexDataBegin));
-
-		if (FAILED(hr))
-		{
-			__debugbreak();
-			return hr;
-		}
-
-		memcpy(pIndexDataBegin, pInitData, bufferSize);
-		pUploadBuffer->Unmap(0, nullptr);
-
-		hr = m_pCommandAllocator->Reset();
-		if (FAILED(hr))
-		{
-			__debugbreak();
-			return hr;
-		}
-
-		hr = m_pCommandList->Reset(m_pCommandAllocator, nullptr);
-		if (FAILED(hr))
-		{
-			__debugbreak();
-			return hr;
-		}
-
-		m_pCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pIndexBuffer, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST));
-		m_pCommandList->CopyBufferRegion(pIndexBuffer, 0, pUploadBuffer.Get(), 0, bufferSize);
-		m_pCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pIndexBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER));
-		m_pCommandList->Close();
-
-		ID3D12CommandList* ppCommandLists[] = { m_pCommandList };
-		m_pCommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-
-		Fence();
-		WaitForFenceValue();
+		__debugbreak();
+		return hr;
 	}
 
-	indexBufferView.BufferLocation = pIndexBuffer->GetGPUVirtualAddress();
+	UINT8* pIndexDataBegin = nullptr;
+	CD3DX12_RANGE readRange(0, 0);
+	hr = uploadBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pIndexDataBegin));
+
+	if (FAILED(hr))
+	{
+		__debugbreak();
+		return hr;
+	}
+
+	memcpy(pIndexDataBegin, pInitData, bufferSize);
+	uploadBuffer->Unmap(0, nullptr);
+
+	hr = m_commandAllocator->Reset();
+	if (FAILED(hr))
+	{
+		__debugbreak();
+		return hr;
+	}
+
+	hr = m_commandList->Reset(m_commandAllocator.Get(), nullptr);
+	if (FAILED(hr))
+	{
+		__debugbreak();
+		return hr;
+	}
+
+	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(indexBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST));
+	m_commandList->CopyBufferRegion(indexBuffer.Get(), 0, uploadBuffer.Get(), 0, bufferSize);
+	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(indexBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_INDEX_BUFFER));
+	m_commandList->Close();
+
+	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
+	m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+	Fence();
+	WaitForFenceValue();
+
+	indexBufferView.BufferLocation = indexBuffer->GetGPUVirtualAddress();
 	indexBufferView.Format = DXGI_FORMAT_R16_UINT;
 	indexBufferView.SizeInBytes = bufferSize;
 
-
 	*pOutIndexBufferView = indexBufferView;
-	*ppOutBuffer = pIndexBuffer;
+	*ppOutBuffer = indexBuffer.Detach();
 
 	return hr;
 }
@@ -225,59 +245,63 @@ HRESULT CD3D12ResourceManager::CreateIndexBuffer(UINT indexCount, D3D12_INDEX_BU
 void CD3D12ResourceManager::UpdateTextureForWrite(ID3D12Resource* pDestTexResource, ID3D12Resource* pSrcTexResource)
 {
 	const DWORD MAX_SUB_RESOURCE_NUM = 32;
-	D3D12_PLACED_SUBRESOURCE_FOOTPRINT Footprint[MAX_SUB_RESOURCE_NUM] = {};
-	UINT	Rows[MAX_SUB_RESOURCE_NUM] = {};
-	UINT64	RowSize[MAX_SUB_RESOURCE_NUM] = {};
-	UINT64	TotalBytes = 0;
+	D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint[MAX_SUB_RESOURCE_NUM] = {};
+	UINT	rows[MAX_SUB_RESOURCE_NUM] = {};
+	UINT64	rowSize[MAX_SUB_RESOURCE_NUM] = {};
+	UINT64	totalBytes = 0;
 
-	D3D12_RESOURCE_DESC Desc = pDestTexResource->GetDesc();
-	if (Desc.MipLevels > (UINT)_countof(Footprint))
+	D3D12_RESOURCE_DESC desc = pDestTexResource->GetDesc();
+	if (desc.MipLevels > static_cast<UINT>(_countof(footprint)))
 		__debugbreak();
 
-	m_pD3DDevice->GetCopyableFootprints(&Desc, 0, Desc.MipLevels, 0, Footprint, Rows, RowSize, &TotalBytes);
+	m_pD3DDevice->GetCopyableFootprints(&desc, 0, desc.MipLevels, 0, footprint, rows, rowSize, &totalBytes);
 
-	if (FAILED(m_pCommandAllocator->Reset()))
+	if (FAILED(m_commandAllocator->Reset()))
 		__debugbreak();
 
-	if (FAILED(m_pCommandList->Reset(m_pCommandAllocator, nullptr)))
+	if (FAILED(m_commandList->Reset(m_commandAllocator.Get(), nullptr)))
 		__debugbreak();
 
-	m_pCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pDestTexResource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST));
-	for (DWORD i = 0; i < Desc.MipLevels; i++)
+	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pDestTexResource, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST));
+	for (DWORD i = 0; i < desc.MipLevels; i++)
 	{
-
 		D3D12_TEXTURE_COPY_LOCATION	destLocation = {};
-		destLocation.PlacedFootprint = Footprint[i];
+		destLocation.PlacedFootprint = footprint[i];
 		destLocation.pResource = pDestTexResource;
 		destLocation.SubresourceIndex = i;
 		destLocation.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
 
 		D3D12_TEXTURE_COPY_LOCATION	srcLocation = {};
-		srcLocation.PlacedFootprint = Footprint[i];
+		srcLocation.PlacedFootprint = footprint[i];
 		srcLocation.pResource = pSrcTexResource;
 		srcLocation.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
 
-		m_pCommandList->CopyTextureRegion(&destLocation, 0, 0, 0, &srcLocation, nullptr);
+		m_commandList->CopyTextureRegion(&destLocation, 0, 0, 0, &srcLocation, nullptr);
 	}
-	m_pCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pDestTexResource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE));
-	m_pCommandList->Close();
+	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pDestTexResource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE));
+	m_commandList->Close();
 
-	ID3D12CommandList* ppCommandLists[] = { m_pCommandList };
-	m_pCommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
+	m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
 	Fence();
 	WaitForFenceValue();
 }
 
-BOOL CD3D12ResourceManager::CreateTexture(ID3D12Resource** ppOutResource, UINT width, UINT height, DXGI_FORMAT format,
-	const BYTE* pInitImage)
+bool CD3D12ResourceManager::CreateTexture(ID3D12Resource** ppOutResource, UINT width, UINT height, DXGI_FORMAT format, const BYTE* pInitImage)
 {
-	ID3D12Resource* pTexResource = nullptr;
-	ID3D12Resource* pUploadBuffer = nullptr;
+	if (!ppOutResource)
+	{
+		__debugbreak();
+		return false;
+	}
+
+	ComPtr<ID3D12Resource> texResource;
+	ComPtr<ID3D12Resource> uploadBuffer;
 
 	D3D12_RESOURCE_DESC textureDesc = {};
 	textureDesc.MipLevels = 1;
-	textureDesc.Format = format;	// ex) DXGI_FORMAT_R8G8B8A8_UNORM, etc...
+	textureDesc.Format = format;
 	textureDesc.Width = width;
 	textureDesc.Height = height;
 	textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
@@ -292,14 +316,15 @@ BOOL CD3D12ResourceManager::CreateTexture(ID3D12Resource** ppOutResource, UINT w
 		&textureDesc,
 		D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE,
 		nullptr,
-		IID_PPV_ARGS(&pTexResource))))
+		IID_PPV_ARGS(texResource.ReleaseAndGetAddressOf()))))
 	{
 		__debugbreak();
+		return false;
 	}
 
 	if (pInitImage)
 	{
-		D3D12_RESOURCE_DESC Desc = pTexResource->GetDesc();
+		D3D12_RESOURCE_DESC Desc = texResource->GetDesc();
 		D3D12_PLACED_SUBRESOURCE_FOOTPRINT Footprint;
 		UINT	Rows = 0;
 		UINT64	RowSize = 0;
@@ -310,7 +335,7 @@ BOOL CD3D12ResourceManager::CreateTexture(ID3D12Resource** ppOutResource, UINT w
 		BYTE* pMappedPtr = nullptr;
 		CD3DX12_RANGE writeRange(0, 0);
 
-		UINT64 uploadBufferSize = GetRequiredIntermediateSize(pTexResource, 0, 1);
+		UINT64 uploadBufferSize = GetRequiredIntermediateSize(texResource.Get(), 0, 1);
 
 		if (FAILED(m_pD3DDevice->CreateCommittedResource(
 			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
@@ -318,14 +343,18 @@ BOOL CD3D12ResourceManager::CreateTexture(ID3D12Resource** ppOutResource, UINT w
 			&CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
 			D3D12_RESOURCE_STATE_GENERIC_READ,
 			nullptr,
-			IID_PPV_ARGS(&pUploadBuffer))))
+			IID_PPV_ARGS(uploadBuffer.ReleaseAndGetAddressOf()))))
 		{
 			__debugbreak();
+			return false;
 		}
 
-		HRESULT hr = pUploadBuffer->Map(0, &writeRange, reinterpret_cast<void**>(&pMappedPtr));
+		HRESULT hr = uploadBuffer->Map(0, &writeRange, reinterpret_cast<void**>(&pMappedPtr));
 		if (FAILED(hr))
+		{
 			__debugbreak();
+			return false;
+		}
 
 		const BYTE* pSrc = pInitImage;
 		BYTE* pDest = pMappedPtr;
@@ -335,69 +364,117 @@ BOOL CD3D12ResourceManager::CreateTexture(ID3D12Resource** ppOutResource, UINT w
 			pSrc += (width * 4);
 			pDest += Footprint.Footprint.RowPitch;
 		}
-		// Unmap
-		pUploadBuffer->Unmap(0, nullptr);
+		uploadBuffer->Unmap(0, nullptr);
 
-		UpdateTextureForWrite(pTexResource, pUploadBuffer);
-
-		pUploadBuffer->Release();
-		pUploadBuffer = nullptr;
-
+		UpdateTextureForWrite(texResource.Get(), uploadBuffer.Get());
 	}
-	*ppOutResource = pTexResource;
+	*ppOutResource = texResource.Detach();
 
-	return TRUE;
+	return true;
+}
+
+bool CD3D12ResourceManager::CreateTextureFromFile(ID3D12Resource** ppOutResource, D3D12_RESOURCE_DESC* pOutDesc, const WCHAR* inFileName)
+{
+	if (!ppOutResource || !pOutDesc)
+	{
+		__debugbreak();
+		return false;
+	}
+
+	*ppOutResource = nullptr;
+	*pOutDesc = {};
+
+	ComPtr<ID3D12Resource> texResource;
+	std::unique_ptr<uint8_t[]> ddsData;
+	std::vector<D3D12_SUBRESOURCE_DATA> subresources;
+
+	HRESULT hr = DirectX::LoadDDSTextureFromFile(
+		m_pD3DDevice,
+		inFileName,
+		texResource.ReleaseAndGetAddressOf(),
+		ddsData,
+		subresources);
+	if (FAILED(hr))
+	{
+		__debugbreak();
+		return false;
+	}
+
+	UINT numSubresources = static_cast<UINT>(subresources.size());
+	UINT64 uploadBufferSize = GetRequiredIntermediateSize(texResource.Get(), 0, numSubresources);
+
+	ComPtr<ID3D12Resource> uploadBuffer;
+	hr = m_pD3DDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(uploadBuffer.ReleaseAndGetAddressOf()));
+	if (FAILED(hr))
+	{
+		__debugbreak();
+		return false;
+	}
+
+	if (FAILED(m_commandAllocator->Reset()))
+	{
+		__debugbreak();
+		return false;
+	}
+	if (FAILED(m_commandList->Reset(m_commandAllocator.Get(), nullptr)))
+	{
+		__debugbreak();
+		return false;
+	}
+
+	m_commandList->ResourceBarrier(1,
+		&CD3DX12_RESOURCE_BARRIER::Transition(
+			texResource.Get(),
+			D3D12_RESOURCE_STATE_COMMON,
+			D3D12_RESOURCE_STATE_COPY_DEST));
+
+	UpdateSubresources(
+		m_commandList.Get(),
+		texResource.Get(),
+		uploadBuffer.Get(),
+		0, 0,
+		numSubresources,
+		subresources.data());
+
+	m_commandList->ResourceBarrier(1,
+		&CD3DX12_RESOURCE_BARRIER::Transition(
+			texResource.Get(),
+			D3D12_RESOURCE_STATE_COPY_DEST,
+			D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE));
+
+	m_commandList->Close();
+
+	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
+	m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+	Fence();
+	WaitForFenceValue();
+
+	*pOutDesc = texResource->GetDesc();
+	*ppOutResource = texResource.Detach();
+	return true;
 }
 
 UINT64 CD3D12ResourceManager::Fence()
 {
 	m_fenceValue++;
-	m_pCommandQueue->Signal(m_pFence, m_fenceValue);
+	m_commandQueue->Signal(m_fence.Get(), m_fenceValue);
 	return m_fenceValue;
 }
 
 void CD3D12ResourceManager::WaitForFenceValue() const
 {
 	UINT64 expectedFence = m_fenceValue;
-	if (m_pFence->GetCompletedValue() < expectedFence)
+	if (m_fence->GetCompletedValue() < expectedFence)
 	{
-		m_pFence->SetEventOnCompletion(expectedFence, m_fenceEvent);
+		m_fence->SetEventOnCompletion(expectedFence, m_fenceEvent);
 		WaitForSingleObject(m_fenceEvent, INFINITE);
-	}
-}
-
-void CD3D12ResourceManager::Clean()
-{
-	WaitForFenceValue();
-
-	if (m_pCommandQueue)
-	{
-		m_pCommandQueue->Release();
-		m_pCommandQueue = nullptr;
-	}
-
-	if (m_pCommandList)
-	{
-		m_pCommandList->Release();
-		m_pCommandList = nullptr;
-	}
-
-	if (m_pCommandAllocator)
-	{
-		m_pCommandAllocator->Release();
-		m_pCommandAllocator = nullptr;
-	}
-
-	if (m_fenceEvent)
-	{
-		CloseHandle(m_fenceEvent);
-		m_fenceEvent = nullptr;
-	}
-
-	if (m_pFence)
-	{
-		m_pFence->Release();
-		m_pFence = nullptr;
 	}
 }
 

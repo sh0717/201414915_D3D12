@@ -26,10 +26,10 @@ BOOL CIndexCreator::Initialize(DWORD dwNum)
 
 DWORD CIndexCreator::Alloc()
 {
-	// 1. m_lAllocatedCount¿¡¼­ 1À» »«´Ù.
-	// 2. m_lAllocatedCount-1À§Ä¡¿¡ dwIndex¸¦ ½á³Ö´Â´Ù.
-	// ÀÌ µÎ°¡Áö ¾×¼ÇÀÌ ÇÊ¿äÇÑµ¥ 1°ú 2»çÀÌ¿¡ ´Ù¸¥ ½º·¹µå°¡ AllocÀ» È£ÃâÇÏ¸é ÀÌ¹Ì ÇÒ´çµÈ ÀÎµ¦½º¸¦ ¾ò¾î°¡´Â ÀÏÀÌ ¹ß»ýÇÑ´Ù.
-	// µû¶ó¼­ Alloc°ú Free¾çÂÊ ´Ù ½ºÇÉ¶ôÀ¸·Î ¸·¾Æ¾ßÇÑ´Ù.
+	// 1. m_lAllocatedCountì—ì„œ 1ì„ ì¦ê°€.
+	// 2. m_lAllocatedCount-1 ìœ„ì¹˜ì˜ dwIndexë¥¼ êº¼ë‚¸ë‹¤.
+	// ì´ ë‘ ê°€ì§€ ì•¡ì…˜ì´ í•„ìš”í•œë° 1ê³¼ 2 ì‚¬ì´ì— ë‹¤ë¥¸ ìŠ¤ë ˆë“œê°€ Allocì„ í˜¸ì¶œí•˜ë©´ ì´ë¯¸ í• ë‹¹ëœ ì¸ë±ìŠ¤ë¥¼ ì–»ëŠ” ë¬¸ì œê°€ ë°œìƒí•œë‹¤.
+	// ë”°ë¼ì„œ Allocê³¼ Freeì—ì„œëŠ” í•œ ë²ˆì— ëë‚˜ì•¼ í•œë‹¤.
 
 	DWORD		dwResult = -1;
 
@@ -75,5 +75,4 @@ CIndexCreator::~CIndexCreator()
 {
 	Check();
 	Cleanup();
-
 }

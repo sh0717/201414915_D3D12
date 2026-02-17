@@ -5,7 +5,7 @@
 #include <d3dx12.h>
 #include "../../Types/typedef.h"
 #include "../../../Util/D3DUtil.h"
-#include "../RenderHelper/ShaderVisibleDescriptorTableAllocator.h"
+#include "../RenderHelper/GpuDescriptorLinearAllocator.h"
 #include "../RenderHelper/ConstantBufferPool.h"
 #include "../ResourceManager/CD3D12ResourceManager.h"
 
@@ -167,10 +167,10 @@ bool CBasicMeshObject::CreateMesh()
 
 	VertexPos3Color4Tex2 vertices[] =
 	{
-		{ { -0.25f, 0.25f, 0.0f }, { 0.f, 1.0f, 1.0f, 1.0f }, { 0.5f, 0.f } },
-		{ { 0.25f, 0.25f, 0.0f }, { 1.0f, 0.f, 1.0f, 1.0f }, { 1.f, 1.f } },
-		{ { 0.25f, -0.25f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.f, 1.f } },
-		{ { -0.25f, -0.25f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.f, 0.5f } }
+		{ { -0.25f, 0.25f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.f, 0.f } },
+		{ { 0.25f, 0.25f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.f, 0.f } },
+		{ { 0.25f, -0.25f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.f, 1.f } },
+		{ { -0.25f, -0.25f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.f, 1.f } }
 	};
 
 	WORD indices[] =
@@ -179,14 +179,14 @@ bool CBasicMeshObject::CreateMesh()
 		0, 2, 3
 	};
 
-	HRESULT hr = pD3D12ResourceManager->CreateVertexBuffer(sizeof(VertexPos3Color4Tex2), _countof(vertices), &m_vertexBufferView, &m_pVertexBuffer, vertices);
+	HRESULT hr = pD3D12ResourceManager->CreateVertexBuffer(sizeof(VertexPos3Color4Tex2), _countof(vertices), &m_vertexBufferView, m_vertexBuffer.ReleaseAndGetAddressOf(), vertices);
 	if (FAILED(hr))
 	{
 		__debugbreak();
 		return bResult;
 	}
 
-	hr = pD3D12ResourceManager->CreateIndexBuffer(_countof(indices), &m_indexBufferView, &m_pIndexBuffer, indices);
+	hr = pD3D12ResourceManager->CreateIndexBuffer(_countof(indices), &m_indexBufferView, m_indexBuffer.ReleaseAndGetAddressOf(), indices);
 	if (FAILED(hr))
 	{
 		__debugbreak();
@@ -212,7 +212,7 @@ void CBasicMeshObject::Draw(ID3D12GraphicsCommandList* pCommandList, const XMMAT
 
 	ID3D12Device5* pD3DDevice = m_pRenderer->GetD3DDevice();
 	CConstantBufferPool* pConstantBufferPool = m_pRenderer->GetConstantBufferPool();
-	CShaderVisibleDescriptorTableAllocator* pDescriptorPool = m_pRenderer->GetDescriptorPool();
+	CGpuDescriptorLinearAllocator* pDescriptorPool = m_pRenderer->GetDescriptorPool();
 	assert(pConstantBufferPool);
 	assert(pDescriptorPool);
 
@@ -267,18 +267,6 @@ void CBasicMeshObject::Draw(ID3D12GraphicsCommandList* pCommandList, const XMMAT
 
 void CBasicMeshObject::Clean()
 {
-	if (m_pVertexBuffer)
-	{
-		m_pVertexBuffer->Release();
-		m_pVertexBuffer = nullptr;
-	}
-
-	if (m_pIndexBuffer)
-	{
-		m_pIndexBuffer->Release();
-		m_pIndexBuffer = nullptr;
-	}
-
 	if (m_pRenderer)
 	{
 		CleanSharedResource();

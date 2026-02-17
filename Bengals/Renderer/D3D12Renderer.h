@@ -6,9 +6,20 @@
  */
 
 class CD3D12ResourceManager;
-class CShaderVisibleDescriptorTableAllocator;
-class CConstantBufferPool;
-class CDescriptorAllocator;
+class CCpuDescriptorFreeListAllocator;
+
+#include "RenderHelper/GpuDescriptorLinearAllocator.h"
+#include "RenderHelper/ConstantBufferPool.h"
+
+struct FrameContext
+{
+
+	ID3D12CommandAllocator* pCommandAllocator = nullptr;
+	ID3D12GraphicsCommandList* pCommandList = nullptr;
+	std::unique_ptr<CGpuDescriptorLinearAllocator> DescriptorPool = nullptr;
+	std::unique_ptr<CConstantBufferPool> ConstantBufferPool = nullptr;
+	uint64_t LastFenceValue = 0;
+};
 
 class CD3D12Renderer
 {
@@ -16,31 +27,31 @@ public:/*function*/
 	CD3D12Renderer() = delete;
 	CD3D12Renderer(HWND hWindow, bool bEnableDebugLayer = true, bool bEnableGbv = true);
 	virtual ~CD3D12Renderer();
-	
+
 	void BeginRender();
 	void EndRender();
 	void Present();
 
 	/* Getter function*/
 
-	inline ID3D12Device5* GetD3DDevice() const
+	ID3D12Device5* GetD3DDevice() const
 	{
 		return m_pD3DDevice;
 	}
-	
-	inline CD3D12ResourceManager* GetResourceManager() const
+
+	CD3D12ResourceManager* GetResourceManager() const
 	{
-		return m_pResourceManager;
+		return m_resourceManager.get();
 	}
 
-	inline CShaderVisibleDescriptorTableAllocator* GetDescriptorPool() const
+	CGpuDescriptorLinearAllocator* GetDescriptorPool() const
 	{
-		return m_pDescriptorPool.get();
+		return m_frameContexts[m_currentContextIndex].DescriptorPool.get();
 	}
 
-	inline CConstantBufferPool* GetConstantBufferPool() const
+	CConstantBufferPool* GetConstantBufferPool() const
 	{
-		return m_pConstantBufferPool.get();
+		return m_frameContexts[m_currentContextIndex].ConstantBufferPool.get();
 	}
 
 	bool UpdateWindowSize(UINT backBufferWidth, UINT backBufferHeight);
@@ -50,21 +61,19 @@ public:/*function*/
 	void DeleteBasicMeshObject(void* pMeshObjectHandle);
 
 	void* CreateTiledTexture(UINT texWidth, UINT texHeight, BYTE r, BYTE g, BYTE b);
+	void* CreateTextureFromFile(const WCHAR* filePath);
 	void DeleteTexture(void* pTextureHandle);
 
 	void GetViewProjMatrix(XMMATRIX* pOutViewMatrix, XMMATRIX* pOutProjMatrix);
-private:/*function*/
+private:
 	bool Initialize(HWND hWindow, bool bEnableDebugLayer = true, bool bEnableGbv = true);
 
 	UINT64 SetFence();
-	void WaitForFenceValue() const;
+	void WaitForFenceValue(uint64_t expectedFenceValue) const;
 
 	void	CreateFence();
 	bool	CreateCommandAllocatorAndCommandList();
 
-	/**
-	 * Render target view 와 depth stencil view 용도의 descriptor heap 을 생성
-	 */
 	void	CreateRTVAndDSVDescriptorHeap();
 	bool	CreateDepthStencil(UINT width, UINT height);
 
@@ -75,9 +84,10 @@ private:/*function*/
 	void	CleanupCommandAllocatorAndCommandList();
 	void	CleanupDescriptorHeap();
 
-private: /*variable*/
+private:
 
-	static constexpr uint32_t SWAP_CHAIN_FRAME_COUNT = 2;
+	static constexpr uint32_t SWAP_CHAIN_FRAME_COUNT = 3;
+	static constexpr uint32_t MAX_PENDING_FRAME_COUNT = SWAP_CHAIN_FRAME_COUNT - 1;
 	static constexpr uint32_t MAX_DRAW_COUNT_PER_FRAME = 4096;
 	static constexpr uint32_t MAX_DESCRIPTOR_COUNT = 4096;
 
@@ -85,8 +95,6 @@ private: /*variable*/
 
 	ID3D12Device5* m_pD3DDevice = nullptr;
 	ID3D12CommandQueue* m_pCommandQueue = nullptr;
-	ID3D12GraphicsCommandList* m_pCommandList = nullptr;
-	ID3D12CommandAllocator* m_pCommandAllocator = nullptr;
 
 	IDXGISwapChain3* m_pSwapChain = nullptr;
 	UINT m_swapChainFlags = 0;
@@ -101,6 +109,9 @@ private: /*variable*/
 
 	UINT m_currentRenderTargetIndex = 0;
 
+	FrameContext m_frameContexts[MAX_PENDING_FRAME_COUNT] = {};
+	DWORD m_currentContextIndex = 0;
+
 	uint64_t m_fenceValue = 0;
 	HANDLE m_fenceEvent = nullptr;
 	ID3D12Fence* m_pFence = nullptr;
@@ -110,10 +121,8 @@ private: /*variable*/
 	UINT m_viewportWidth = 0;
 	UINT m_viewportHeight = 0;
 
-	CD3D12ResourceManager* m_pResourceManager = nullptr;
-	std::unique_ptr<CShaderVisibleDescriptorTableAllocator> m_pDescriptorPool = nullptr;
-	std::unique_ptr<CConstantBufferPool> m_pConstantBufferPool = nullptr;
-	CDescriptorAllocator* m_pDescriptorAllocator = nullptr;
+	std::unique_ptr<CD3D12ResourceManager> m_resourceManager = nullptr;
+	std::unique_ptr<CCpuDescriptorFreeListAllocator> m_descriptorAllocator = nullptr;
 
 	XMMATRIX m_viewMatrix = {};
 	XMMATRIX m_projectionMatrix = {};

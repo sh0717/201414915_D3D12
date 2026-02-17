@@ -10,12 +10,11 @@
 
 #include "ResourceManager/CD3D12ResourceManager.h"
 #include "RenderHelper/ConstantBufferPool.h"
-#include "RenderHelper/ShaderVisibleDescriptorTableAllocator.h"
-#include "RenderHelper/DescriptorAllocator.h"
+#include "RenderHelper/GpuDescriptorLinearAllocator.h"
+#include "RenderHelper/CpuDescriptorFreeListAllocator.h"
 
 #include "BasicMeshObject/BasicMeshObject.h"
 #include "../Types/typedef.h"
-
 
 CD3D12Renderer::CD3D12Renderer(HWND hWindow, bool bEnableDebugLayer, bool bEnableGbv)
 {
@@ -34,7 +33,7 @@ CD3D12Renderer::~CD3D12Renderer()
 bool CD3D12Renderer::Initialize(HWND hWindow, bool bEnableDebugLayer, bool bEnableGbv)
 {
 	bool bResult = false;
-	
+
 	ComPtr<ID3D12Debug>	DebugController = nullptr;
 	ComPtr<IDXGIFactory4> Factory = nullptr;
 
@@ -135,14 +134,14 @@ bool CD3D12Renderer::Initialize(HWND hWindow, bool bEnableDebugLayer, bool bEnab
 	::GetClientRect(hWindow, &ClientRect);
 	DWORD	wndWidth = ClientRect.right - ClientRect.left;
 	DWORD	wndHeight = ClientRect.bottom - ClientRect.top;
-	UINT	dwBackBufferWidth = ClientRect.right - ClientRect.left;
-	UINT	dwBackBufferHeight = ClientRect.bottom - ClientRect.top;
+	UINT	backBufferWidth = ClientRect.right - ClientRect.left;
+	UINT	backBufferHeight = ClientRect.bottom - ClientRect.top;
 
-	//Make swap chain 
+	//Make swap chain
 
 	DXGI_SWAP_CHAIN_DESC1 SwapChainDesc = {};
-	SwapChainDesc.Width = dwBackBufferWidth;
-	SwapChainDesc.Height = dwBackBufferHeight;
+	SwapChainDesc.Width = backBufferWidth;
+	SwapChainDesc.Height = backBufferHeight;
 	SwapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	//swapChainDesc.BufferDesc.RefreshRate.Numerator = m_uiRefreshRate;
 	//swapChainDesc.BufferDesc.RefreshRate.Denominator = 1;
@@ -200,59 +199,68 @@ bool CD3D12Renderer::Initialize(HWND hWindow, bool bEnableDebugLayer, bool bEnab
 	CreateDepthStencil(wndWidth, wndHeight);
 	CreateCommandAllocatorAndCommandList();
 	CreateFence();
-	
+
 	InitializeCamera();
 
-	m_pResourceManager = new CD3D12ResourceManager{};
-	m_pResourceManager->Initialize(m_pD3DDevice);
+	m_resourceManager = std::make_unique<CD3D12ResourceManager>();
+	m_resourceManager->Initialize(m_pD3DDevice);
 
-	m_pDescriptorPool = std::make_unique<CShaderVisibleDescriptorTableAllocator>();
-	m_pDescriptorPool->Initialize(m_pD3DDevice, MAX_DRAW_COUNT_PER_FRAME* CBasicMeshObject::DescriptorCountPerDraw);
+	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
+	{
+		FrameContext& ctx = m_frameContexts[i];
 
-	m_pConstantBufferPool = std::make_unique<CConstantBufferPool>();
-	m_pConstantBufferPool->Initialize(m_pD3DDevice, static_cast<UINT>(AlignConstantBufferSize(sizeof(ConstantBufferDefault))), MAX_DRAW_COUNT_PER_FRAME);
+		ctx.DescriptorPool = std::make_unique<CGpuDescriptorLinearAllocator>();
+		ctx.DescriptorPool->Initialize(m_pD3DDevice, MAX_DRAW_COUNT_PER_FRAME * CBasicMeshObject::DescriptorCountPerDraw);
 
-	m_pDescriptorAllocator = new CDescriptorAllocator{};
-	m_pDescriptorAllocator->Initialize(m_pD3DDevice, MAX_DESCRIPTOR_COUNT);
+		ctx.ConstantBufferPool = std::make_unique<CConstantBufferPool>();
+		ctx.ConstantBufferPool->Initialize(m_pD3DDevice, static_cast<UINT>(AlignConstantBufferSize(sizeof(ConstantBufferDefault))), MAX_DRAW_COUNT_PER_FRAME);
+	}
+
+	m_descriptorAllocator = std::make_unique<CCpuDescriptorFreeListAllocator>();
+	m_descriptorAllocator->Initialize(m_pD3DDevice, MAX_DESCRIPTOR_COUNT);
 
 	return bResult = true;
 }
 
 void CD3D12Renderer::BeginRender()
 {
-	if (FAILED(m_pCommandAllocator->Reset()))
+	FrameContext& ctx = m_frameContexts[m_currentContextIndex];
+
+	if (FAILED(ctx.pCommandAllocator->Reset()))
 	{
 		__debugbreak();
 	}
 
-	if (FAILED(m_pCommandList->Reset(m_pCommandAllocator, nullptr)))
+	if (FAILED(ctx.pCommandList->Reset(ctx.pCommandAllocator, nullptr)))
 	{
 		__debugbreak();
 	}
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE RTVDescriptorHandle(m_pRtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), m_currentRenderTargetIndex, m_rtvDescriptorSize);
 
-	CD3DX12_RESOURCE_BARRIER RenderTargetBarrier = CD3DX12_RESOURCE_BARRIER::Transition (m_pRenderTargets[m_currentRenderTargetIndex], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
-	m_pCommandList->ResourceBarrier(1, &RenderTargetBarrier);
+	CD3DX12_RESOURCE_BARRIER RenderTargetBarrier = CD3DX12_RESOURCE_BARRIER::Transition(m_pRenderTargets[m_currentRenderTargetIndex], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	ctx.pCommandList->ResourceBarrier(1, &RenderTargetBarrier);
 
 	const float BackColor[] = { 1.0f, 0.0f, 1.0f, 1.0f };
 	D3D12_CPU_DESCRIPTOR_HANDLE DsvDescriptorHandle{ m_pDsvDescriptorHeap->GetCPUDescriptorHandleForHeapStart()};
 
-	m_pCommandList->ClearRenderTargetView(RTVDescriptorHandle, BackColor, 0, nullptr);
-	m_pCommandList->ClearDepthStencilView(DsvDescriptorHandle, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
-	m_pCommandList->RSSetViewports(1, &m_viewport);
-	m_pCommandList->RSSetScissorRects(1, &m_scissorRect);
-	m_pCommandList->OMSetRenderTargets(1, &RTVDescriptorHandle, FALSE, &DsvDescriptorHandle);
+	ctx.pCommandList->ClearRenderTargetView(RTVDescriptorHandle, BackColor, 0, nullptr);
+	ctx.pCommandList->ClearDepthStencilView(DsvDescriptorHandle, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
+	ctx.pCommandList->RSSetViewports(1, &m_viewport);
+	ctx.pCommandList->RSSetScissorRects(1, &m_scissorRect);
+	ctx.pCommandList->OMSetRenderTargets(1, &RTVDescriptorHandle, FALSE, &DsvDescriptorHandle);
 	/*==========================================================================================*/
 }
 void CD3D12Renderer::EndRender()
 {
+	FrameContext& ctx = m_frameContexts[m_currentContextIndex];
+
 	/*==========================================================================================*/
 	CD3DX12_RESOURCE_BARRIER RenderTargetBarrier = CD3DX12_RESOURCE_BARRIER::Transition(m_pRenderTargets[m_currentRenderTargetIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
-	m_pCommandList->ResourceBarrier(1, &RenderTargetBarrier);
-	m_pCommandList->Close();
-	
-	ID3D12CommandList* pCommandLists[] = { m_pCommandList };
+	ctx.pCommandList->ResourceBarrier(1, &RenderTargetBarrier);
+	ctx.pCommandList->Close();
+
+	ID3D12CommandList* pCommandLists[] = { ctx.pCommandList };
     m_pCommandQueue->ExecuteCommandLists(_countof(pCommandLists), pCommandLists);
 }
 
@@ -260,29 +268,36 @@ void CD3D12Renderer::Present()
 {
 	//UINT m_SyncInterval = 1;	// VSync On
 	UINT syncInterval = 0;	// VSync Off
+	UINT presentFlags = 0;
 
-	UINT uiSyncInterval = syncInterval;
-	UINT uiPresentFlags = 0;
-
-	if (!uiSyncInterval)
+	if (!syncInterval)
 	{
-		uiPresentFlags = DXGI_PRESENT_ALLOW_TEARING;
+		presentFlags = DXGI_PRESENT_ALLOW_TEARING;
 	}
 
-	HRESULT hr = m_pSwapChain->Present(uiSyncInterval, uiPresentFlags);
-	
+	// Fence를 Present 앞에 호출: 렌더링 커맨드 완료 시점만 정확히 추적
+	SetFence();
+
+	HRESULT hr = m_pSwapChain->Present(syncInterval, presentFlags);
+
 	if (DXGI_ERROR_DEVICE_REMOVED == hr)
 	{
 		__debugbreak();
 	}
-	
+
     m_currentRenderTargetIndex = m_pSwapChain->GetCurrentBackBufferIndex();
 
-	SetFence();
-	WaitForFenceValue();
+	// 다음 컨텍스트의 이전 GPU 작업 완료 대기
+	DWORD nextContextIndex = (m_currentContextIndex + 1) % MAX_PENDING_FRAME_COUNT;
+	FrameContext& nextCtx = m_frameContexts[nextContextIndex];
+	WaitForFenceValue(nextCtx.LastFenceValue);
 
-	m_pConstantBufferPool->Reset();
-	m_pDescriptorPool->Reset();
+	// 다음 컨텍스트의 풀 리셋
+	nextCtx.ConstantBufferPool->Reset();
+	nextCtx.DescriptorPool->Reset();
+
+	// 컨텍스트 전환
+	m_currentContextIndex = nextContextIndex;
 }
 
 bool CD3D12Renderer::UpdateWindowSize(UINT backBufferWidth, UINT backBufferHeight)
@@ -297,6 +312,13 @@ bool CD3D12Renderer::UpdateWindowSize(UINT backBufferWidth, UINT backBufferHeigh
 	if (m_viewportWidth == backBufferWidth && m_viewportHeight == backBufferHeight)
 	{
 		return bResult;
+	}
+
+	// 모든 컨텍스트의 GPU 작업 완료 대기
+	SetFence();
+	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
+	{
+		WaitForFenceValue(m_frameContexts[i].LastFenceValue);
 	}
 
 	DXGI_SWAP_CHAIN_DESC1	desc;
@@ -324,7 +346,7 @@ bool CD3D12Renderer::UpdateWindowSize(UINT backBufferWidth, UINT backBufferHeigh
 
 	// Create frame resources.
 	CD3DX12_CPU_DESCRIPTOR_HANDLE RTVHandle(m_pRtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
-	
+
 	// Create a RTV for each frame.
 	for (UINT Index = 0; Index < SWAP_CHAIN_FRAME_COUNT; ++Index)
 	{
@@ -338,7 +360,7 @@ bool CD3D12Renderer::UpdateWindowSize(UINT backBufferWidth, UINT backBufferHeigh
 	m_viewportHeight = backBufferHeight;
 	m_viewport.Width = static_cast<FLOAT>(m_viewportWidth);
 	m_viewport.Height = static_cast<FLOAT>(m_viewportHeight);
-	
+
 	m_scissorRect.left = 0;
 	m_scissorRect.top = 0;
 	m_scissorRect.right = m_viewportWidth;
@@ -365,7 +387,7 @@ void CD3D12Renderer::RenderMeshObject(void* pMeshObjectHandle, const XMMATRIX& w
 	}
 
 	CBasicMeshObject* pMeshObj = (CBasicMeshObject*)pMeshObjectHandle;
-	pMeshObj->Draw(m_pCommandList, worldMatrix, srvDescriptorHandle);
+	pMeshObj->Draw(m_frameContexts[m_currentContextIndex].pCommandList, worldMatrix, srvDescriptorHandle);
 }
 
 void CD3D12Renderer::DeleteBasicMeshObject(void* pMeshObjectHandle)
@@ -414,7 +436,7 @@ void* CD3D12Renderer::CreateTiledTexture(UINT texWidth, UINT texHeight, BYTE r, 
 		bFirstColorIsWhite++;
 		bFirstColorIsWhite %= 2;
 	}
-	if (m_pResourceManager->CreateTexture(&pTexResource, texWidth, texHeight, texFormat, pImage))
+	if (m_resourceManager->CreateTexture(&pTexResource, texWidth, texHeight, texFormat, pImage))
 	{
 		D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc = {};
 		SRVDesc.Format = texFormat;
@@ -422,7 +444,7 @@ void* CD3D12Renderer::CreateTiledTexture(UINT texWidth, UINT texHeight, BYTE r, 
 		SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 		SRVDesc.Texture2D.MipLevels = 1;
 
-		if (m_pDescriptorAllocator->Allocate(&srv))
+		if (m_descriptorAllocator->Allocate(&srv))
 		{
 			m_pD3DDevice->CreateShaderResourceView(pTexResource, &SRVDesc, srv);
 
@@ -443,6 +465,41 @@ void* CD3D12Renderer::CreateTiledTexture(UINT texWidth, UINT texHeight, BYTE r, 
 	return pTextureHandle;
 }
 
+void* CD3D12Renderer::CreateTextureFromFile(const WCHAR* filePath)
+{
+	TextureHandle* pTextureHandle = nullptr;
+	ID3D12Resource* pTexResource = nullptr;
+	D3D12_RESOURCE_DESC texDesc = {};
+	D3D12_CPU_DESCRIPTOR_HANDLE srv = {};
+
+	if (!m_resourceManager->CreateTextureFromFile(&pTexResource, &texDesc, filePath))
+	{
+		return nullptr;
+	}
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Format = texDesc.Format;
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MipLevels = texDesc.MipLevels;
+
+	if (m_descriptorAllocator->Allocate(&srv))
+	{
+		m_pD3DDevice->CreateShaderResourceView(pTexResource, &srvDesc, srv);
+
+		pTextureHandle = new TextureHandle;
+		pTextureHandle->TextureResource = pTexResource;
+		pTextureHandle->SrvDescriptorHandle = srv;
+	}
+	else
+	{
+		pTexResource->Release();
+		pTexResource = nullptr;
+	}
+
+	return pTextureHandle;
+}
+
 void CD3D12Renderer::DeleteTexture(void* pTextureHandle)
 {
 	TextureHandle* pTextureData = (TextureHandle*)pTextureHandle;
@@ -454,7 +511,7 @@ void CD3D12Renderer::DeleteTexture(void* pTextureHandle)
 	{
 		pTexResource->Release();
 	}
-	m_pDescriptorAllocator->Free(srv);	
+	m_descriptorAllocator->Free(srv);
 
 	delete pTextureData;
 }
@@ -470,13 +527,12 @@ UINT64 CD3D12Renderer::SetFence()
 {
 	m_fenceValue++;
 	m_pCommandQueue->Signal(m_pFence, m_fenceValue);
+	m_frameContexts[m_currentContextIndex].LastFenceValue = m_fenceValue;
 	return m_fenceValue;
 }
 
-void CD3D12Renderer::WaitForFenceValue() const
+void CD3D12Renderer::WaitForFenceValue(uint64_t expectedFenceValue) const
 {
-	const UINT64 expectedFenceValue = m_fenceValue;
-
 	if (m_pFence->GetCompletedValue() < expectedFenceValue)
 	{
 		m_pFence->SetEventOnCompletion(expectedFenceValue, m_fenceEvent);
@@ -490,20 +546,24 @@ bool CD3D12Renderer::CreateCommandAllocatorAndCommandList()
 
 	bool bResult = false;
 
-	if (FAILED(m_pD3DDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_pCommandAllocator))))
+	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
 	{
-		__debugbreak();
-	}
+		FrameContext& ctx = m_frameContexts[i];
 
-	// Create the command list.
-	if (FAILED(m_pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_pCommandAllocator, nullptr, IID_PPV_ARGS(&m_pCommandList))))
-	{
-		__debugbreak();
-	}
+		if (FAILED(m_pD3DDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&ctx.pCommandAllocator))))
+		{
+			__debugbreak();
+		}
 
-	// Command lists are created in the recording state, but there is nothing
-	// to record yet. The main loop expects it to be closed, so close it now.
-	m_pCommandList->Close();
+		if (FAILED(m_pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, ctx.pCommandAllocator, nullptr, IID_PPV_ARGS(&ctx.pCommandList))))
+		{
+			__debugbreak();
+		}
+
+		// Command lists are created in the recording state, but there is nothing
+		// to record yet. The main loop expects it to be closed, so close it now.
+		ctx.pCommandList->Close();
+	}
 
 	bResult = true;
 
@@ -524,7 +584,7 @@ void CD3D12Renderer::CreateFence()
 void CD3D12Renderer::CreateRTVAndDSVDescriptorHeap()
 {
 	D3D12_DESCRIPTOR_HEAP_DESC RTVDescriptorHeapDesc = {};
-	RTVDescriptorHeapDesc.NumDescriptors = SWAP_CHAIN_FRAME_COUNT;	
+	RTVDescriptorHeapDesc.NumDescriptors = SWAP_CHAIN_FRAME_COUNT;
 	RTVDescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 	RTVDescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	if (FAILED(m_pD3DDevice->CreateDescriptorHeap(&RTVDescriptorHeapDesc, IID_PPV_ARGS(&m_pRtvDescriptorHeap))))
@@ -599,16 +659,14 @@ bool CD3D12Renderer::CreateDepthStencil(UINT width, UINT height)
 
 void CD3D12Renderer::InitializeCamera()
 {
-	// ī�޶� ��ġ, ī�޶� ����, ���� ������ ����
-	XMVECTOR eyePos = XMVectorSet(0.0f, 0.0f, -1.0f, 1.0f); // ī�޶� ��ġ
-	XMVECTOR eyeDir = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f); // ī�޶� ���� (������ ���ϵ��� ����)
-	XMVECTOR upDir = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f); // ���� ���� (�Ϲ������� y���� ���� ����)
+	XMVECTOR eyePos = XMVectorSet(0.0f, 0.0f, -1.0f, 1.0f);
+	XMVECTOR eyeDir = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+	XMVECTOR upDir = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
 
 	// view matrix
 	m_viewMatrix = XMMatrixLookToLH(eyePos, eyeDir, upDir);
 
-	// �þ߰� (FOV) ���� (���� ����)
-	float fovY = XM_PIDIV4; // 90�� (�������� ��ȯ)
+	float fovY = XM_PIDIV4;
 
 	// projection matrix
 	float fAspectRatio = (float)m_viewportWidth / (float)m_viewportHeight;
@@ -619,22 +677,22 @@ void CD3D12Renderer::InitializeCamera()
 
 void CD3D12Renderer::Cleanup()
 {
-	WaitForFenceValue();
-
-	m_pDescriptorPool = nullptr;
-	m_pConstantBufferPool = nullptr;
-
-	if (m_pResourceManager)
+	// 모든 컨텍스트의 GPU 작업 완료 보장
+	SetFence();
+	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
 	{
-		delete m_pResourceManager;
-		m_pResourceManager = nullptr;
+		WaitForFenceValue(m_frameContexts[i].LastFenceValue);
 	}
 
-	if (m_pDescriptorAllocator)
+	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
 	{
-		delete m_pDescriptorAllocator;
-		m_pDescriptorAllocator = nullptr;
+		m_frameContexts[i].DescriptorPool = nullptr;
+		m_frameContexts[i].ConstantBufferPool = nullptr;
 	}
+
+	m_resourceManager = nullptr;
+
+	m_descriptorAllocator = nullptr;
 
 	CleanupDescriptorHeap();
 	for (DWORD i = 0; i < SWAP_CHAIN_FRAME_COUNT; i++)
@@ -657,13 +715,13 @@ void CD3D12Renderer::Cleanup()
 		m_pSwapChain->Release();
 		m_pSwapChain = nullptr;
 	}
-	
+
 	if (m_pCommandQueue)
 	{
 		m_pCommandQueue->Release();
 		m_pCommandQueue = nullptr;
 	}
-	
+
 	CleanupCommandAllocatorAndCommandList();
 	CleanupFence();
 
@@ -720,14 +778,18 @@ void CD3D12Renderer::CleanupDescriptorHeap()
 
 void CD3D12Renderer::CleanupCommandAllocatorAndCommandList()
 {
-	if (m_pCommandList)
+	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
 	{
-		m_pCommandList->Release();
-		m_pCommandList = nullptr;
-	}
-	if (m_pCommandAllocator)
-	{
-		m_pCommandAllocator->Release();
-		m_pCommandAllocator = nullptr;
+		FrameContext& ctx = m_frameContexts[i];
+		if (ctx.pCommandList)
+		{
+			ctx.pCommandList->Release();
+			ctx.pCommandList = nullptr;
+		}
+		if (ctx.pCommandAllocator)
+		{
+			ctx.pCommandAllocator->Release();
+			ctx.pCommandAllocator = nullptr;
+		}
 	}
 }

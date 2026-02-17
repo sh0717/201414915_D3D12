@@ -32,7 +32,7 @@ Build artifacts land in `Bengals/x64/<Config>/`; never commit `.exe`, `.pdb`, or
 ## Coding Conventions
 
 - **Classes**: `C` prefix + PascalCase (`CRenderer`, `CResourceManager`)
-- **Members**: `m_` + camelCase; `m_b` for bool; `m_p` for pointer; `m_pp` for double pointer
+- **Members**: `m_` + camelCase; `m_b` for bool; `m_p` for raw pointer; `m_pp` for double pointer; `unique_ptr`/`ComPtr` 등 스마트 포인터는 `m_p` 접두사 없이 `m_` + camelCase
 - **Globals**: `g_` prefix, same suffixes as members (`g_pMeshObject`, `g_bEnable`)
 - **Locals/params**: camelCase; `b` prefix for bool; `p`/`pp` prefix for pointers
 - **Functions**: PascalCase. Lifecycle pattern: `OnInit`, `LoadPipeline`, `LoadAssets`, `OnUpdate`, `OnRender`, `OnDestroy`, `PopulateCommandList`, `WaitForPreviousFrame`

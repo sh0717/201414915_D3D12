@@ -106,7 +106,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 	
 	g_pMeshObject = g_renderer->CreateBasicMeshObject();
 	g_pTextureHandle0 = g_renderer->CreateTiledTexture(16, 16, 192, 128, 255);
-	g_pTextureHandle1 = g_renderer->CreateTiledTexture(32, 32, 128, 255, 192);
+	g_pTextureHandle1 = g_renderer->CreateTextureFromFile(L"../Resources/Image/miku.dds");
 	// Main message loop:
 	//while (GetMessage(&msg, nullptr, 0, 0))
 	//{
@@ -135,7 +135,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 			RunGame();
 		}
 	}
-
 
 	if (g_pMeshObject)
 	{
