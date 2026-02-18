@@ -56,7 +56,7 @@ public:/*function*/
 		return m_descriptorAllocator.get();
 	}
 
-	CConstantBufferPool* GetConstantBufferPool(ConstantBufferType type) const
+	CConstantBufferPool* GetConstantBufferPool(EConstantBufferType type) const
 	{
 		return m_frameContexts[m_currentContextIndex].ConstantBufferManager->GetConstantBufferPool(type);
 	}
@@ -93,6 +93,10 @@ public:/*function*/
 	void DeleteTexture(void* pTextureHandle);
 
 	void GetViewProjMatrix(XMMATRIX* pOutViewMatrix, XMMATRIX* pOutProjMatrix);
+
+	void SetCameraPos(float x, float y, float z);
+	void MoveCamera(float dx, float dy, float dz);
+
 private:
 	bool Initialize(HWND hWindow, bool bEnableDebugLayer = true, bool bEnableGbv = true);
 
@@ -153,6 +157,8 @@ private:
 	std::unique_ptr<CCpuDescriptorFreeListAllocator> m_descriptorAllocator = nullptr;
 	std::unique_ptr<CTextureManager> m_textureManager = nullptr;
 
+	XMVECTOR m_cameraPos = {};
+	XMVECTOR m_cameraDir = {};
 	XMMATRIX m_viewMatrix = {};
 	XMMATRIX m_projectionMatrix = {};
 };

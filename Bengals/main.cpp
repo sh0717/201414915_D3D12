@@ -4,9 +4,7 @@
 #include <cstdio>
 #include <cstdarg>
 #include "Resource.h"
-#include "Renderer/D3D12Renderer.h"
-#include "Types/typedef.h"
-#include "../Util/D3DUtil.h"
+#include "Game.h"
 
 // required .lib files
 #pragma comment(lib, "DXGI.lib")
@@ -37,36 +35,12 @@ extern "C" { __declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001; }
 static constexpr int MAX_LOADSTRING = 100;
 
 // Global Variables:
-HINSTANCE g_instanceHandle = nullptr;                                // current instance
+HINSTANCE g_instanceHandle = nullptr;
 HWND g_mainWindow = nullptr;
-WCHAR g_title[MAX_LOADSTRING];                  // The title bar text
-WCHAR g_windowClass[MAX_LOADSTRING];            // the main window class name
+WCHAR g_title[MAX_LOADSTRING];
+WCHAR g_windowClass[MAX_LOADSTRING];
 
-std::unique_ptr<CD3D12Renderer> g_renderer = nullptr;
-void* g_pMeshObject0 = nullptr;
-void* g_pMeshObject1 = nullptr;
-void* g_pSpriteObject0 = nullptr;
-void* g_pSpriteObjCommon = nullptr;
-
-XMMATRIX g_worldMatrix0 = {};
-XMMATRIX g_worldMatrix1 = {};
-float g_rotation0 = 0.f;
-float g_rotation1 = 0.f;
-
-ULONGLONG g_previousFrameCheckTick = 0;
-ULONGLONG g_previousUpdateTick = 0;
-DWORD	g_frameCount = 0;
-
-
-//dynamic texture
-void* g_pDynamicTexHandle = nullptr;
-BYTE* g_pImage = nullptr;
-UINT g_ImageWidth = 0;
-UINT g_ImageHeight = 0;
-//~dynamic texture
-
-static void RunGame();
-static void Update();
+std::unique_ptr<CGame> g_game;
 
 // Forward declarations of functions included in this code module:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
@@ -105,48 +79,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
 	MSG msg;
 
-	g_renderer  = std::make_unique<CD3D12Renderer>(g_mainWindow, true, true);
-	if (!g_renderer)
+	g_game = std::make_unique<CGame>();
+	if (!g_game->Initialize(g_mainWindow, true, true))
 	{
 		__debugbreak();
 	}
 
-	g_pMeshObject0 = CreateBoxMeshObject(g_renderer.get());
-	g_pMeshObject1 = CreateQuadMeshObject(g_renderer.get());
-	if (!g_pMeshObject0 || !g_pMeshObject1)
-	{
-		__debugbreak();
-	}
-
-
-	g_ImageWidth = 512;
-	g_ImageHeight = 256;
-	g_pImage = (BYTE*)malloc(g_ImageWidth * g_ImageHeight * 4);
-	DWORD* pDest = (DWORD*)g_pImage;
-	for (DWORD y = 0; y < g_ImageHeight; y++)
-	{
-		for (DWORD x = 0; x < g_ImageWidth; x++)
-		{
-			pDest[x + g_ImageWidth * y] = 0xff0000ff;
-		}
-	}
-	g_pDynamicTexHandle = g_renderer->CreateDynamicTexture(g_ImageWidth, g_ImageHeight);
-
-	g_pSpriteObject0 = g_renderer->CreateSpriteObject(
-		L"../Resources/Image/sprite_1024x1024.dds",
-		512, 512, 512, 512);
-	g_pSpriteObjCommon = g_renderer->CreateSpriteObject();
-
-
-	// Main message loop:
-	//while (GetMessage(&msg, nullptr, 0, 0))
-	//{
-	//	if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
-	//	{
-	//		TranslateMessage(&msg);
-	//		DispatchMessage(&msg);
-	//	}
-	//}
 	// Main message loop:
 	while (true)
 	{
@@ -163,212 +101,16 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 		}
 		else /*if no message*/
 		{
-			RunGame();
+			g_game->Run();
 		}
 	}
 
-	if (g_pMeshObject0)
-	{
-		g_renderer->DeleteBasicMeshObject(g_pMeshObject0);
-		g_pMeshObject0 = nullptr;
-	}
-	if (g_pMeshObject1)
-	{
-		g_renderer->DeleteBasicMeshObject(g_pMeshObject1);
-		g_pMeshObject1 = nullptr;
-	}
-
-	if (g_pSpriteObject0)
-	{
-		g_renderer->DeleteSpriteObject(g_pSpriteObject0);
-		g_pSpriteObject0 = nullptr;
-	}
-
-	if (g_pImage)
-	{
-		free(g_pImage);
-		g_pImage = nullptr;
-	}
-
-	if (g_pSpriteObjCommon)
-	{
-		g_renderer->DeleteSpriteObject(g_pSpriteObjCommon);
-		g_pSpriteObjCommon = nullptr;
-	}
-
-	if (g_pDynamicTexHandle)
-	{
-		g_renderer->DeleteTexture(g_pDynamicTexHandle);
-		g_pDynamicTexHandle = nullptr;
-	}
-
-	g_renderer.reset();
+	g_game.reset();
 
 #ifdef _DEBUG
 	_ASSERT(_CrtCheckMemory());
 #endif
 	return (int)msg.wParam;
-}
-
-void RunGame()
-{
-	g_frameCount++;
-
-	g_renderer->BeginRender();
-	LONGLONG CurTick = GetTickCount64();
-	// game business logic
-
-	if (CurTick - g_previousUpdateTick > 16)
-	{
-		// Update Scene with 60FPS
-		Update();
-		g_previousUpdateTick = CurTick;
-	}
-	RECT rect;
-	rect.left = 0;
-	rect.top = 0;
-	rect.right = 256;
-	rect.bottom = 256;
-	// rendering objects
-	g_renderer->RenderMeshObject(g_pMeshObject0, g_worldMatrix0);
-	g_renderer->RenderMeshObject(g_pMeshObject1, g_worldMatrix1);
-
-	g_renderer->RenderSprite(g_pSpriteObject0, 100, 80, 100, 100, 0.f);
-
-	//render dynamic texture
-	g_renderer->RenderSpriteWithTex(g_pSpriteObjCommon, 0, 300, 300, 200, nullptr, 0.f, g_pDynamicTexHandle);
-
-	g_renderer->EndRender();
-	g_renderer->Present();
-
-	if (CurTick - g_previousFrameCheckTick > 1000)
-	{
-		g_previousFrameCheckTick = CurTick;
-
-		WCHAR wchTxt[64];
-		swprintf_s(wchTxt, L"FPS:%u", g_frameCount);
-		SetWindowText(g_mainWindow, wchTxt);
-
-		g_frameCount = 0;
-	}
-}
-
-void Update()
-{
-
-	//
-	// world matrix 0
-	//
-	g_worldMatrix0 = XMMatrixIdentity();
-
-	//scale
-	XMMATRIX matScale0 = XMMatrixScaling(0.5, 0.5, 0.5);
-
-	// rotation 
-	XMMATRIX matRot0 = XMMatrixRotationX(g_rotation0);
-
-	// translation
-	XMMATRIX matTrans0 = XMMatrixTranslation(-0.55f, 0.f, 0.25f);
-
-	// rot0 x trans0
-	g_worldMatrix0 = XMMatrixMultiply(matRot0, matTrans0);
-	g_worldMatrix0 = XMMatrixMultiply(matScale0, g_worldMatrix0);
-
-	//
-	// world matrix 1
-	//
-	g_worldMatrix1 = XMMatrixIdentity();
-
-	// world matrix 1
-	//scale
-	XMMATRIX matScale1 = XMMatrixScaling(1.0, 1.0, 1.0);
-
-	// rotation 
-	XMMATRIX matRot1 = XMMatrixRotationY(g_rotation1);
-
-	// translation
-	XMMATRIX matTrans1 = XMMatrixTranslation(0.15f, 0.0f, 0.25f);
-
-	// rot1 x trans1
-	g_worldMatrix1 = XMMatrixMultiply(matRot1, matTrans1);
-	g_worldMatrix1 = XMMatrixMultiply(matScale1, g_worldMatrix1);
-
-	BOOL	bChangeTex = FALSE;
-	g_rotation0 += 0.05f;
-	if (g_rotation0 > 2.0f * 3.1415f)
-	{
-		g_rotation0 = 0.0f;
-		bChangeTex = TRUE;
-	}
-
-	g_rotation1 += 0.1f;
-	if (g_rotation1 > 2.0f * 3.1415f)
-	{
-		g_rotation1 = 0.0f;
-	}
-
-	// Update Texture
-	static DWORD g_dwCount = 0;
-	static DWORD g_dwTileColorR = 0;
-	static DWORD g_dwTileColorG = 0;
-	static DWORD g_dwTileColorB = 0;
-
-	const DWORD TILE_WIDTH = 16;
-	const DWORD TILE_HEIGHT = 16;
-
-	DWORD TILE_WIDTH_COUNT = g_ImageWidth / TILE_WIDTH;
-	DWORD TILE_HEIGHT_COUNT = g_ImageHeight / TILE_HEIGHT;
-
-	if (g_dwCount >= TILE_WIDTH_COUNT * TILE_HEIGHT_COUNT)
-	{
-		g_dwCount = 0;
-	}
-	DWORD TileY = g_dwCount / TILE_WIDTH_COUNT;
-	DWORD TileX = g_dwCount % TILE_WIDTH_COUNT;
-
-	DWORD StartX = TileX * TILE_WIDTH;
-	DWORD StartY = TileY * TILE_HEIGHT;
-
-
-	//DWORD r = rand() % 256;
-	//DWORD g = rand() % 256;
-	//DWORD b = rand() % 256;
-
-	DWORD r = g_dwTileColorR;
-	DWORD g = g_dwTileColorG;
-	DWORD b = g_dwTileColorB;
-
-	DWORD* pDest = (DWORD*)g_pImage;
-	for (DWORD y = 0; y < 16; y++)
-	{
-		for (DWORD x = 0; x < 16; x++)
-		{
-			if (StartX + x >= g_ImageWidth)
-				__debugbreak();
-
-			if (StartY + y >= g_ImageHeight)
-				__debugbreak();
-
-			pDest[(StartX + x) + (StartY + y) * g_ImageWidth] = 0xff000000 | (b << 16) | (g << 8) | r;
-		}
-	}
-	g_dwCount++;
-	g_dwTileColorR += 8;
-	if (g_dwTileColorR > 255)
-	{
-		g_dwTileColorR = 0;
-		g_dwTileColorG += 8;
-	}
-	if (g_dwTileColorG > 255)
-	{
-		g_dwTileColorG = 0;
-		g_dwTileColorB += 8;
-	}
-	if (g_dwTileColorB > 255)
-	{
-		g_dwTileColorB = 0;
-	}
-	g_renderer->UpdateTextureWithImage(g_pDynamicTexHandle, g_pImage, g_ImageWidth, g_ImageHeight);
 }
 
 //
@@ -456,15 +198,31 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				}
 			}
 			break;
-		case WM_SIZE :
+		case WM_SIZE:
 			{
-				if (g_renderer)
+				if (g_game)
 				{
 					RECT	rect;
 					GetClientRect(hWnd, &rect);
-					DWORD	dwWndWidth = rect.right - rect.left;
-					DWORD	dwWndHeight = rect.bottom - rect.top;
-					g_renderer->UpdateWindowSize(dwWndWidth, dwWndHeight);
+					UINT wndWidth = rect.right - rect.left;
+					UINT wndHeight = rect.bottom - rect.top;
+					g_game->UpdateWindowSize(wndWidth, wndHeight);
+				}
+			}
+			break;
+		case WM_KEYDOWN:
+			{
+				if (g_game)
+				{
+					g_game->OnKeyDown((UINT)wParam, (UINT)((lParam >> 16) & 0xFF));
+				}
+			}
+			break;
+		case WM_KEYUP:
+			{
+				if (g_game)
+				{
+					g_game->OnKeyUp((UINT)wParam, (UINT)((lParam >> 16) & 0xFF));
 				}
 			}
 			break;

@@ -51,16 +51,16 @@ struct ConstantBufferSprite
 	float Reserved1;
 };
 
-enum ConstantBufferType
+enum class EConstantBufferType
 {
-	ConstantBufferTypeDefault = 0,
-	ConstantBufferTypeSprite,
-	ConstantBufferTypeCount
+	Default = 0,
+	Sprite,
+	Count
 };
 
 struct ConstantBufferProperty
 {
-	ConstantBufferType Type;
+	EConstantBufferType Type;
 	UINT Size;
 };
 

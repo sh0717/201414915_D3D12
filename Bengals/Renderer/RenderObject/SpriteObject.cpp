@@ -285,7 +285,7 @@ void CSpriteObject::DrawWithTex(ID3D12GraphicsCommandList* pCommandList, XMFLOAT
 	}
 
 	CGpuDescriptorLinearAllocator* pDescriptorAllocator = m_pRenderer->GetDescriptorPool();
-	CConstantBufferPool* pConstantBufferPool = m_pRenderer->GetConstantBufferPool(ConstantBufferTypeSprite);
+	CConstantBufferPool* pConstantBufferPool = m_pRenderer->GetConstantBufferPool(EConstantBufferType::Sprite);
 	if (!pDescriptorAllocator || !pConstantBufferPool)
 	{
 		return;

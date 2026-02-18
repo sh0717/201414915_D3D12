@@ -61,7 +61,11 @@
       "Bash(gh api:*)",
       "WebFetch(domain:docs.vulkan.org)",
       "WebFetch(domain:docs.rs)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" \"C:/Users/forde/Documents/BengalGames/Bengals/Bengals.sln\" /t:Build /p:Configuration=Debug /p:Platform=x64 /verbosity:minimal)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" \"C:\\\\Users\\\\forde\\\\Documents\\\\BengalGames\\\\Bengals\\\\Bengals.sln\" -t:Build -p:Configuration=Debug -p:Platform=x64 -verbosity:minimal)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" \"C:\\\\Users\\\\forde\\\\Documents\\\\BengalGames\\\\Bengals\\\\Bengals.sln\" -t:Build -p:Configuration=Debug -p:Platform=x64 -p:PlatformToolset=v143 -verbosity:minimal)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" \"C:/Users/forde/Documents/BengalGames/Bengals/Bengals.sln\" -t:Build -p:Configuration=Debug -p:Platform=x64 -p:PlatformToolset=v143 -verbosity:minimal)"
     ]
   }
 }

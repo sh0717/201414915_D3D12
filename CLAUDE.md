@@ -39,7 +39,7 @@ Build artifacts land in `Bengals/x64/<Config>/`; never commit `.exe`, `.pdb`, or
 - **Structs**: PascalCase type name; public fields PascalCase; bool fields `b` prefix
 - **Constants**: PascalCase (`FrameCount`); macros ALL_CAPS (prefer `constexpr`/`const`)
 - **Files/folders**: PascalCase. D3D12 backend boundaries use `D3D12*` or `Dx12*` prefix
-- **Enums**: PascalCase name and values
+- **Enums**: `E` prefix + PascalCase type name (`EMeshType`, `EConstantBufferType`); values PascalCase
 - Tabs for indentation, braces on new lines, switch cases indented one tab
 - Include `pch.h` first; favor `ComPtr`/`std::unique_ptr` over raw pointers
 - Keep shader files (`Renderer/Shaders/*.hlsl` + `.cso`) in sync with their filenames

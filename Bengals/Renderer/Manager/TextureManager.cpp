@@ -21,73 +21,6 @@ bool CTextureManager::Initialize(CD3D12Renderer* pRenderer)
 	return true;
 }
 
-TextureHandle* CTextureManager::AllocTextureHandle()
-{
-	TextureHandle* pTexHandle = new TextureHandle{};
-	pTexHandle->RefCount = 1;
-	return pTexHandle;
-}
-
-DWORD CTextureManager::FreeTextureHandle(TextureHandle* pTexHandle)
-{
-	if (!pTexHandle)
-	{
-		return 0;
-	}
-
-	if (!pTexHandle->RefCount)
-	{
-		__debugbreak();
-	}
-
-	DWORD refCount = --pTexHandle->RefCount;
-	if (refCount == 0)
-	{
-		if (pTexHandle->TextureResource)
-		{
-			pTexHandle->TextureResource->Release();
-			pTexHandle->TextureResource = nullptr;
-		}
-
-		if (pTexHandle->pUploadBuffer)
-		{
-			pTexHandle->pUploadBuffer->Release();
-			pTexHandle->pUploadBuffer = nullptr;
-		}
-
-		if (pTexHandle->SrvDescriptorHandle.ptr)
-		{
-			m_pDescriptorAllocator->Free(pTexHandle->SrvDescriptorHandle);
-		}
-
-		delete pTexHandle;
-	}
-
-	return refCount;
-}
-
-bool CTextureManager::CreateSrvForTexture(TextureHandle* pTexHandle, ID3D12Resource* pTexResource, DXGI_FORMAT format, UINT mipLevels)
-{
-	D3D12_CPU_DESCRIPTOR_HANDLE srv = {};
-
-	if (!m_pDescriptorAllocator->Allocate(&srv))
-	{
-		return false;
-	}
-
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-	srvDesc.Format = format;
-	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srvDesc.Texture2D.MipLevels = mipLevels;
-
-	m_pD3DDevice->CreateShaderResourceView(pTexResource, &srvDesc, srv);
-
-	pTexHandle->TextureResource = pTexResource;
-	pTexHandle->SrvDescriptorHandle = srv;
-	return true;
-}
-
 TextureHandle* CTextureManager::CreateTextureFromFile(const WCHAR* filePath)
 {
 	// dedup: 동일 파일이 이미 로드되어 있으면 참조 카운트 증가 후 반환
@@ -225,6 +158,73 @@ void CTextureManager::DeleteTexture(TextureHandle* pTexHandle)
 	}
 
 	FreeTextureHandle(pTexHandle);
+}
+
+TextureHandle* CTextureManager::AllocTextureHandle()
+{
+	TextureHandle* pTexHandle = new TextureHandle{};
+	pTexHandle->RefCount = 1;
+	return pTexHandle;
+}
+
+DWORD CTextureManager::FreeTextureHandle(TextureHandle* pTexHandle)
+{
+	if (!pTexHandle)
+	{
+		return 0;
+	}
+
+	if (!pTexHandle->RefCount)
+	{
+		__debugbreak();
+	}
+
+	DWORD refCount = --pTexHandle->RefCount;
+	if (refCount == 0)
+	{
+		if (pTexHandle->TextureResource)
+		{
+			pTexHandle->TextureResource->Release();
+			pTexHandle->TextureResource = nullptr;
+		}
+
+		if (pTexHandle->pUploadBuffer)
+		{
+			pTexHandle->pUploadBuffer->Release();
+			pTexHandle->pUploadBuffer = nullptr;
+		}
+
+		if (pTexHandle->SrvDescriptorHandle.ptr)
+		{
+			m_pDescriptorAllocator->Free(pTexHandle->SrvDescriptorHandle);
+		}
+
+		delete pTexHandle;
+	}
+
+	return refCount;
+}
+
+bool CTextureManager::CreateSrvForTexture(TextureHandle* pTexHandle, ID3D12Resource* pTexResource, DXGI_FORMAT format, UINT mipLevels)
+{
+	D3D12_CPU_DESCRIPTOR_HANDLE srv = {};
+
+	if (!m_pDescriptorAllocator->Allocate(&srv))
+	{
+		return false;
+	}
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Format = format;
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MipLevels = mipLevels;
+
+	m_pD3DDevice->CreateShaderResourceView(pTexResource, &srvDesc, srv);
+
+	pTexHandle->TextureResource = pTexResource;
+	pTexHandle->SrvDescriptorHandle = srv;
+	return true;
 }
 
 void CTextureManager::Cleanup()

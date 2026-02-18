@@ -12,8 +12,8 @@ public:
 	bool Initialize(ID3D12Device5* pD3DDevice, UINT maxCbvCountPerType);
 	void Reset();
 
-	CConstantBufferPool* GetConstantBufferPool(ConstantBufferType type) const;
+	CConstantBufferPool* GetConstantBufferPool(EConstantBufferType type) const;
 
 private:
-	std::unique_ptr<CConstantBufferPool> m_constantBufferPoolList[ConstantBufferTypeCount] = {};
+	std::unique_ptr<CConstantBufferPool> m_constantBufferPoolList[static_cast<UINT>(EConstantBufferType::Count)] = {};
 };

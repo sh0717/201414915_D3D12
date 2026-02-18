@@ -12,8 +12,8 @@ bool CConstantBufferManager::Initialize(ID3D12Device5* pD3DDevice, UINT maxCbvCo
 
 	static constexpr ConstantBufferProperty ConstantBufferPropertyList[] =
 	{
-		{ ConstantBufferTypeDefault, static_cast<UINT>(sizeof(ConstantBufferDefault)) },
-		{ ConstantBufferTypeSprite, static_cast<UINT>(sizeof(ConstantBufferSprite)) }
+		{ EConstantBufferType::Default, static_cast<UINT>(sizeof(ConstantBufferDefault)) },
+		{ EConstantBufferType::Sprite, static_cast<UINT>(sizeof(ConstantBufferSprite)) }
 	};
 
 	for (UINT i = 0; i < _countof(ConstantBufferPropertyList); i++)
@@ -37,7 +37,7 @@ bool CConstantBufferManager::Initialize(ID3D12Device5* pD3DDevice, UINT maxCbvCo
 
 void CConstantBufferManager::Reset()
 {
-	for (UINT i = 0; i < ConstantBufferTypeCount; i++)
+	for (UINT i = 0; i < static_cast<UINT>(EConstantBufferType::Count); i++)
 	{
 		if (m_constantBufferPoolList[i])
 		{
@@ -46,10 +46,10 @@ void CConstantBufferManager::Reset()
 	}
 }
 
-CConstantBufferPool* CConstantBufferManager::GetConstantBufferPool(ConstantBufferType type) const
+CConstantBufferPool* CConstantBufferManager::GetConstantBufferPool(EConstantBufferType type) const
 {
 	const UINT poolIndex = static_cast<UINT>(type);
-	if (poolIndex >= ConstantBufferTypeCount)
+	if (poolIndex >= static_cast<UINT>(EConstantBufferType::Count))
 	{
 		__debugbreak();
 		return nullptr;

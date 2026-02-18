@@ -33,201 +33,6 @@ CD3D12Renderer::~CD3D12Renderer()
 	Cleanup();
 }
 
-bool CD3D12Renderer::Initialize(HWND hWindow, bool bEnableDebugLayer, bool bEnableGbv)
-{
-	bool bResult = false;
-
-	ComPtr<ID3D12Debug>	DebugController = nullptr;
-	ComPtr<IDXGIFactory4> Factory = nullptr;
-
-	DWORD createFactoryFlags = 0;
-
-	if (bEnableDebugLayer)
-	{
-		if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(DebugController.ReleaseAndGetAddressOf()))))
-		{
-			assert(DebugController);
-			DebugController->EnableDebugLayer();
-		}
-
-		createFactoryFlags = DXGI_CREATE_FACTORY_DEBUG;
-		if (bEnableGbv)
-		{
-			ID3D12Debug5* pDebugController5 = nullptr;
-			if (SUCCEEDED(DebugController->QueryInterface(IID_PPV_ARGS(&pDebugController5))))
-			{
-				assert(pDebugController5);
-
-				pDebugController5->SetEnableGPUBasedValidation(TRUE);
-				pDebugController5->SetEnableAutoName(TRUE);
-				pDebugController5->Release();
-			}
-		}
-	}
-
-	if (SUCCEEDED(CreateDXGIFactory2(createFactoryFlags, IID_PPV_ARGS(Factory.ReleaseAndGetAddressOf()))))
-	{
-		assert(Factory != nullptr && "DXGI Factory is not valid");
-
-		D3D_FEATURE_LEVEL	featureLevels[] =
-		{	D3D_FEATURE_LEVEL_12_2,
-			D3D_FEATURE_LEVEL_12_1,
-			D3D_FEATURE_LEVEL_12_0,
-			D3D_FEATURE_LEVEL_11_1,
-			D3D_FEATURE_LEVEL_11_0
-		};
-		UINT featureLevelCount = _countof(featureLevels);
-
-		bool bDeviceCreated = false;
-		for (UINT index = 0; index < featureLevelCount; index++)
-		{
-			if (bDeviceCreated)
-			{
-				break;
-			}
-
-			UINT adapterIndex = 0;
-			ComPtr<IDXGIAdapter1> DXGIAdapter = nullptr;
-			while (Factory->EnumAdapters1(adapterIndex, DXGIAdapter.ReleaseAndGetAddressOf()) != DXGI_ERROR_NOT_FOUND)
-			{
-				if (DXGIAdapter == nullptr)
-				{
-					continue;;
-				}
-
-				DXGI_ADAPTER_DESC1 AdapterDesc{};
-				DXGIAdapter->GetDesc1(&AdapterDesc);
-
-				if (SUCCEEDED(D3D12CreateDevice(DXGIAdapter.Get(), featureLevels[index], IID_PPV_ARGS(&m_pD3DDevice))))
-				{
-					bDeviceCreated = true;
-					break;
-				}
-
-				adapterIndex++;
-			}
-		}
-	}
-
-	m_windowHandle = hWindow;
-
-	if (m_pD3DDevice == nullptr)
-	{
-		__debugbreak();
-		return false;
-	}
-
-	if (DebugController)
-	{
-		SetDebugLayerInfo(m_pD3DDevice);
-	}
-
-	D3D12_COMMAND_QUEUE_DESC CommandQueueDesc = {};
-	CommandQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-	CommandQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-
-	if (FAILED(m_pD3DDevice->CreateCommandQueue(&CommandQueueDesc, IID_PPV_ARGS(&m_pCommandQueue))) || m_pCommandQueue == nullptr)
-	{
-		__debugbreak();
-		return false;
-	}
-
-
-	RECT	ClientRect;
-	::GetClientRect(hWindow, &ClientRect);
-	DWORD	wndWidth = ClientRect.right - ClientRect.left;
-	DWORD	wndHeight = ClientRect.bottom - ClientRect.top;
-	UINT	backBufferWidth = ClientRect.right - ClientRect.left;
-	UINT	backBufferHeight = ClientRect.bottom - ClientRect.top;
-
-	//Make swap chain
-
-	DXGI_SWAP_CHAIN_DESC1 SwapChainDesc = {};
-	SwapChainDesc.Width = backBufferWidth;
-	SwapChainDesc.Height = backBufferHeight;
-	SwapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	//swapChainDesc.BufferDesc.RefreshRate.Numerator = m_uiRefreshRate;
-	//swapChainDesc.BufferDesc.RefreshRate.Denominator = 1;
-	SwapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	SwapChainDesc.BufferCount = SWAP_CHAIN_FRAME_COUNT;
-	SwapChainDesc.SampleDesc.Count = 1;
-	SwapChainDesc.SampleDesc.Quality = 0;
-	SwapChainDesc.Scaling = DXGI_SCALING_NONE;
-	SwapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-	SwapChainDesc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-	SwapChainDesc.Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
-	m_swapChainFlags = SwapChainDesc.Flags;
-
-	DXGI_SWAP_CHAIN_FULLSCREEN_DESC swapChainFullscreenDesc = {};
-	swapChainFullscreenDesc.Windowed = TRUE;
-
-	ComPtr<IDXGISwapChain1> pSwapChain1 = nullptr;
-	if (FAILED(Factory->CreateSwapChainForHwnd(m_pCommandQueue, hWindow, &SwapChainDesc, &swapChainFullscreenDesc, nullptr, pSwapChain1.ReleaseAndGetAddressOf())))
-	{
-		__debugbreak();
-		return false;
-	}
-	pSwapChain1->QueryInterface(IID_PPV_ARGS(&m_pSwapChain));
-
-	assert(m_pSwapChain != nullptr && "CD3D12Renderer::Initialize , Swap chain 3 is not valid ");
-	m_currentRenderTargetIndex = m_pSwapChain->GetCurrentBackBufferIndex();
-	//~ Make swap chain
-
-	// set viewport and scissor rect
-	m_viewport.Width = static_cast<float>(wndWidth);
-	m_viewport.Height = static_cast<float>(wndHeight);
-	m_viewport.MaxDepth = 1.f;
-	m_viewport.MinDepth = 0.f;
-
-	m_scissorRect.left = 0;
-	m_scissorRect.right = wndWidth;
-	m_scissorRect.top = 0;
-	m_scissorRect.bottom = wndHeight;
-
-	m_viewportWidth = wndWidth;
-	m_viewportHeight = wndHeight;
-	// ~set viewport and scissor rect
-
-	CreateRTVAndDSVDescriptorHeap();
-
-	//create RTV descriptor
-	CD3DX12_CPU_DESCRIPTOR_HANDLE RTVDescriptorHandle{ m_pRtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart() };
-	for (UINT n = 0; n < SWAP_CHAIN_FRAME_COUNT; n++)
-	{
-		m_pSwapChain->GetBuffer(n, IID_PPV_ARGS(&m_pRenderTargets[n]));
-		m_pD3DDevice->CreateRenderTargetView(m_pRenderTargets[n], nullptr, RTVDescriptorHandle);
-		RTVDescriptorHandle.Offset(1, m_rtvDescriptorSize);
-	}
-
-	CreateDepthStencil(wndWidth, wndHeight);
-	CreateCommandAllocatorAndCommandList();
-	CreateFence();
-
-	InitializeCamera();
-
-	m_resourceManager = std::make_unique<CD3D12ResourceManager>();
-	m_resourceManager->Initialize(m_pD3DDevice);
-
-	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
-	{
-		FrameContext& ctx = m_frameContexts[i];
-
-		ctx.DescriptorPool = std::make_unique<CGpuDescriptorLinearAllocator>();
-		ctx.DescriptorPool->Initialize(m_pD3DDevice, MAX_DRAW_COUNT_PER_FRAME * CBasicMeshObject::MaxDescriptorCountForDraw);
-
-		ctx.ConstantBufferManager = std::make_unique<CConstantBufferManager>();
-		ctx.ConstantBufferManager->Initialize(m_pD3DDevice, MAX_DRAW_COUNT_PER_FRAME);
-	}
-
-	m_descriptorAllocator = std::make_unique<CCpuDescriptorFreeListAllocator>();
-	m_descriptorAllocator->Initialize(m_pD3DDevice, MAX_DESCRIPTOR_COUNT);
-
-	m_textureManager = std::make_unique<CTextureManager>();
-	m_textureManager->Initialize(this);
-
-	return bResult = true;
-}
-
 void CD3D12Renderer::BeginRender()
 {
 	FrameContext& ctx = m_frameContexts[m_currentContextIndex];
@@ -563,6 +368,214 @@ void CD3D12Renderer::GetViewProjMatrix(XMMATRIX* pOutViewMatrix, XMMATRIX* pOutP
 	*pOutProjMatrix = m_projectionMatrix;
 }
 
+void CD3D12Renderer::SetCameraPos(float x, float y, float z)
+{
+	m_cameraPos = XMVectorSet(x, y, z, 1.0f);
+	XMVECTOR upDir = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+	m_viewMatrix = XMMatrixLookToLH(m_cameraPos, m_cameraDir, upDir);
+}
+
+void CD3D12Renderer::MoveCamera(float dx, float dy, float dz)
+{
+	m_cameraPos = XMVectorAdd(m_cameraPos, XMVectorSet(dx, dy, dz, 0.0f));
+	XMVECTOR upDir = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+	m_viewMatrix = XMMatrixLookToLH(m_cameraPos, m_cameraDir, upDir);
+}
+
+bool CD3D12Renderer::Initialize(HWND hWindow, bool bEnableDebugLayer, bool bEnableGbv)
+{
+	bool bResult = false;
+
+	ComPtr<ID3D12Debug>	DebugController = nullptr;
+	ComPtr<IDXGIFactory4> Factory = nullptr;
+
+	DWORD createFactoryFlags = 0;
+
+	if (bEnableDebugLayer)
+	{
+		if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(DebugController.ReleaseAndGetAddressOf()))))
+		{
+			assert(DebugController);
+			DebugController->EnableDebugLayer();
+		}
+
+		createFactoryFlags = DXGI_CREATE_FACTORY_DEBUG;
+		if (bEnableGbv)
+		{
+			ID3D12Debug5* pDebugController5 = nullptr;
+			if (SUCCEEDED(DebugController->QueryInterface(IID_PPV_ARGS(&pDebugController5))))
+			{
+				assert(pDebugController5);
+
+				pDebugController5->SetEnableGPUBasedValidation(TRUE);
+				pDebugController5->SetEnableAutoName(TRUE);
+				pDebugController5->Release();
+			}
+		}
+	}
+
+	if (SUCCEEDED(CreateDXGIFactory2(createFactoryFlags, IID_PPV_ARGS(Factory.ReleaseAndGetAddressOf()))))
+	{
+		assert(Factory != nullptr && "DXGI Factory is not valid");
+
+		D3D_FEATURE_LEVEL	featureLevels[] =
+		{	D3D_FEATURE_LEVEL_12_2,
+			D3D_FEATURE_LEVEL_12_1,
+			D3D_FEATURE_LEVEL_12_0,
+			D3D_FEATURE_LEVEL_11_1,
+			D3D_FEATURE_LEVEL_11_0
+		};
+		UINT featureLevelCount = _countof(featureLevels);
+
+		bool bDeviceCreated = false;
+		for (UINT index = 0; index < featureLevelCount; index++)
+		{
+			if (bDeviceCreated)
+			{
+				break;
+			}
+
+			UINT adapterIndex = 0;
+			ComPtr<IDXGIAdapter1> DXGIAdapter = nullptr;
+			while (Factory->EnumAdapters1(adapterIndex, DXGIAdapter.ReleaseAndGetAddressOf()) != DXGI_ERROR_NOT_FOUND)
+			{
+				if (DXGIAdapter == nullptr)
+				{
+					continue;;
+				}
+
+				DXGI_ADAPTER_DESC1 AdapterDesc{};
+				DXGIAdapter->GetDesc1(&AdapterDesc);
+
+				if (SUCCEEDED(D3D12CreateDevice(DXGIAdapter.Get(), featureLevels[index], IID_PPV_ARGS(&m_pD3DDevice))))
+				{
+					bDeviceCreated = true;
+					break;
+				}
+
+				adapterIndex++;
+			}
+		}
+	}
+
+	m_windowHandle = hWindow;
+
+	if (m_pD3DDevice == nullptr)
+	{
+		__debugbreak();
+		return false;
+	}
+
+	if (DebugController)
+	{
+		SetDebugLayerInfo(m_pD3DDevice);
+	}
+
+	D3D12_COMMAND_QUEUE_DESC CommandQueueDesc = {};
+	CommandQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+	CommandQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+
+	if (FAILED(m_pD3DDevice->CreateCommandQueue(&CommandQueueDesc, IID_PPV_ARGS(&m_pCommandQueue))) || m_pCommandQueue == nullptr)
+	{
+		__debugbreak();
+		return false;
+	}
+
+
+	RECT	ClientRect;
+	::GetClientRect(hWindow, &ClientRect);
+	DWORD	wndWidth = ClientRect.right - ClientRect.left;
+	DWORD	wndHeight = ClientRect.bottom - ClientRect.top;
+	UINT	backBufferWidth = ClientRect.right - ClientRect.left;
+	UINT	backBufferHeight = ClientRect.bottom - ClientRect.top;
+
+	//Make swap chain
+
+	DXGI_SWAP_CHAIN_DESC1 SwapChainDesc = {};
+	SwapChainDesc.Width = backBufferWidth;
+	SwapChainDesc.Height = backBufferHeight;
+	SwapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	//swapChainDesc.BufferDesc.RefreshRate.Numerator = m_uiRefreshRate;
+	//swapChainDesc.BufferDesc.RefreshRate.Denominator = 1;
+	SwapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	SwapChainDesc.BufferCount = SWAP_CHAIN_FRAME_COUNT;
+	SwapChainDesc.SampleDesc.Count = 1;
+	SwapChainDesc.SampleDesc.Quality = 0;
+	SwapChainDesc.Scaling = DXGI_SCALING_NONE;
+	SwapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+	SwapChainDesc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
+	SwapChainDesc.Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+	m_swapChainFlags = SwapChainDesc.Flags;
+
+	DXGI_SWAP_CHAIN_FULLSCREEN_DESC swapChainFullscreenDesc = {};
+	swapChainFullscreenDesc.Windowed = TRUE;
+
+	ComPtr<IDXGISwapChain1> pSwapChain1 = nullptr;
+	if (FAILED(Factory->CreateSwapChainForHwnd(m_pCommandQueue, hWindow, &SwapChainDesc, &swapChainFullscreenDesc, nullptr, pSwapChain1.ReleaseAndGetAddressOf())))
+	{
+		__debugbreak();
+		return false;
+	}
+	pSwapChain1->QueryInterface(IID_PPV_ARGS(&m_pSwapChain));
+
+	assert(m_pSwapChain != nullptr && "CD3D12Renderer::Initialize , Swap chain 3 is not valid ");
+	m_currentRenderTargetIndex = m_pSwapChain->GetCurrentBackBufferIndex();
+	//~ Make swap chain
+
+	// set viewport and scissor rect
+	m_viewport.Width = static_cast<float>(wndWidth);
+	m_viewport.Height = static_cast<float>(wndHeight);
+	m_viewport.MaxDepth = 1.f;
+	m_viewport.MinDepth = 0.f;
+
+	m_scissorRect.left = 0;
+	m_scissorRect.right = wndWidth;
+	m_scissorRect.top = 0;
+	m_scissorRect.bottom = wndHeight;
+
+	m_viewportWidth = wndWidth;
+	m_viewportHeight = wndHeight;
+	// ~set viewport and scissor rect
+
+	CreateRTVAndDSVDescriptorHeap();
+
+	//create RTV descriptor
+	CD3DX12_CPU_DESCRIPTOR_HANDLE RTVDescriptorHandle{ m_pRtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart() };
+	for (UINT n = 0; n < SWAP_CHAIN_FRAME_COUNT; n++)
+	{
+		m_pSwapChain->GetBuffer(n, IID_PPV_ARGS(&m_pRenderTargets[n]));
+		m_pD3DDevice->CreateRenderTargetView(m_pRenderTargets[n], nullptr, RTVDescriptorHandle);
+		RTVDescriptorHandle.Offset(1, m_rtvDescriptorSize);
+	}
+
+	CreateDepthStencil(wndWidth, wndHeight);
+	CreateCommandAllocatorAndCommandList();
+	CreateFence();
+
+	InitializeCamera();
+
+	m_resourceManager = std::make_unique<CD3D12ResourceManager>();
+	m_resourceManager->Initialize(m_pD3DDevice);
+
+	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
+	{
+		FrameContext& ctx = m_frameContexts[i];
+
+		ctx.DescriptorPool = std::make_unique<CGpuDescriptorLinearAllocator>();
+		ctx.DescriptorPool->Initialize(m_pD3DDevice, MAX_DRAW_COUNT_PER_FRAME * CBasicMeshObject::MaxDescriptorCountForDraw);
+
+		ctx.ConstantBufferManager = std::make_unique<CConstantBufferManager>();
+		ctx.ConstantBufferManager->Initialize(m_pD3DDevice, MAX_DRAW_COUNT_PER_FRAME);
+	}
+
+	m_descriptorAllocator = std::make_unique<CCpuDescriptorFreeListAllocator>();
+	m_descriptorAllocator->Initialize(m_pD3DDevice, MAX_DESCRIPTOR_COUNT);
+
+	m_textureManager = std::make_unique<CTextureManager>();
+	m_textureManager->Initialize(this);
+
+	return bResult = true;
+}
 
 UINT64 CD3D12Renderer::SetFence()
 {
@@ -579,6 +592,17 @@ void CD3D12Renderer::WaitForFenceValue(uint64_t expectedFenceValue) const
 		m_pFence->SetEventOnCompletion(expectedFenceValue, m_fenceEvent);
 		WaitForSingleObject(m_fenceEvent, INFINITE);
 	}
+}
+
+void CD3D12Renderer::CreateFence()
+{
+	if (FAILED(m_pD3DDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_pFence))))
+	{
+		__debugbreak();
+	}
+
+	m_fenceValue = 0;
+	m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 }
 
 bool CD3D12Renderer::CreateCommandAllocatorAndCommandList()
@@ -609,17 +633,6 @@ bool CD3D12Renderer::CreateCommandAllocatorAndCommandList()
 	bResult = true;
 
 	return bResult;
-}
-
-void CD3D12Renderer::CreateFence()
-{
-	if (FAILED(m_pD3DDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_pFence))))
-	{
-		__debugbreak();
-	}
-
-	m_fenceValue = 0;
-	m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 }
 
 void CD3D12Renderer::CreateRTVAndDSVDescriptorHeap()
@@ -700,16 +713,13 @@ bool CD3D12Renderer::CreateDepthStencil(UINT width, UINT height)
 
 void CD3D12Renderer::InitializeCamera()
 {
-	XMVECTOR eyePos = XMVectorSet(0.0f, 0.0f, -1.0f, 1.0f);
-	XMVECTOR eyeDir = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+	m_cameraPos = XMVectorSet(0.0f, 0.0f, -1.0f, 1.0f);
+	m_cameraDir = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
 	XMVECTOR upDir = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
 
-	// view matrix
-	m_viewMatrix = XMMatrixLookToLH(eyePos, eyeDir, upDir);
+	m_viewMatrix = XMMatrixLookToLH(m_cameraPos, m_cameraDir, upDir);
 
 	float fovY = XM_PIDIV4;
-
-	// projection matrix
 	float fAspectRatio = (float)m_viewportWidth / (float)m_viewportHeight;
 	float fNear = 0.1f;
 	float fFar = 1000.0f;
@@ -802,21 +812,6 @@ void CD3D12Renderer::CleanupFence()
 	m_fenceValue = 0;
 }
 
-void CD3D12Renderer::CleanupDescriptorHeap()
-{
-	if (m_pRtvDescriptorHeap)
-	{
-		m_pRtvDescriptorHeap->Release();
-		m_pRtvDescriptorHeap = nullptr;
-	}
-
-	if (m_pDsvDescriptorHeap)
-	{
-		m_pDsvDescriptorHeap->Release();
-		m_pDsvDescriptorHeap = nullptr;
-	}
-}
-
 void CD3D12Renderer::CleanupCommandAllocatorAndCommandList()
 {
 	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
@@ -832,5 +827,20 @@ void CD3D12Renderer::CleanupCommandAllocatorAndCommandList()
 			ctx.pCommandAllocator->Release();
 			ctx.pCommandAllocator = nullptr;
 		}
+	}
+}
+
+void CD3D12Renderer::CleanupDescriptorHeap()
+{
+	if (m_pRtvDescriptorHeap)
+	{
+		m_pRtvDescriptorHeap->Release();
+		m_pRtvDescriptorHeap = nullptr;
+	}
+
+	if (m_pDsvDescriptorHeap)
+	{
+		m_pDsvDescriptorHeap->Release();
+		m_pDsvDescriptorHeap = nullptr;
 	}
 }

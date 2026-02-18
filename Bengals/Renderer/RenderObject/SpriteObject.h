@@ -40,7 +40,7 @@ private: /*function*/
 	void CleanSharedResource();
 
 private: /*variable*/
-	enum SpriteDescriptorIndex
+	enum ESpriteDescriptorIndex
 	{
 		SpriteDescriptorIndexCbv = 0,
 		SpriteDescriptorIndexTex = 1

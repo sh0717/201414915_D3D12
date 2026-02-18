@@ -228,7 +228,7 @@ void CBasicMeshObject::Draw(ID3D12GraphicsCommandList* pCommandList, const XMMAT
 	}
 
 	ID3D12Device5* pD3DDevice = m_pRenderer->GetD3DDevice();
-	CConstantBufferPool* pConstantBufferPool = m_pRenderer->GetConstantBufferPool(ConstantBufferTypeDefault);
+	CConstantBufferPool* pConstantBufferPool = m_pRenderer->GetConstantBufferPool(EConstantBufferType::Default);
 	CGpuDescriptorLinearAllocator* pDescriptorAllocator = m_pRenderer->GetDescriptorPool();
 
 	ID3D12DescriptorHeap* pDescriptorHeap = pDescriptorAllocator->GetDescriptorHeap();
@@ -303,25 +303,6 @@ void CBasicMeshObject::Clean()
 	}
 }
 
-void CBasicMeshObject::CleanTriGroups()
-{
-	if (m_triGroupList)
-	{
-		for (UINT i = 0; i < m_triGroupCount; i++)
-		{
-			IndexedTriGroup& triGroup = m_triGroupList[i];
-			if (triGroup.pTexHandle)
-			{
-				m_pRenderer->DeleteTexture(triGroup.pTexHandle);
-				triGroup.pTexHandle = nullptr;
-			}
-		}
-		m_triGroupList.reset();
-		m_triGroupCount = 0;
-		m_maxTriGroupCount = 0;
-	}
-}
-
 void CBasicMeshObject::CleanSharedResource()
 {
 	if (m_initRefCount <= 0 || m_pRenderer == nullptr)
@@ -343,5 +324,24 @@ void CBasicMeshObject::CleanSharedResource()
 			m_pPipelineStateObject->Release();
 			m_pPipelineStateObject = nullptr;
 		}
+	}
+}
+
+void CBasicMeshObject::CleanTriGroups()
+{
+	if (m_triGroupList)
+	{
+		for (UINT i = 0; i < m_triGroupCount; i++)
+		{
+			IndexedTriGroup& triGroup = m_triGroupList[i];
+			if (triGroup.pTexHandle)
+			{
+				m_pRenderer->DeleteTexture(triGroup.pTexHandle);
+				triGroup.pTexHandle = nullptr;
+			}
+		}
+		m_triGroupList.reset();
+		m_triGroupCount = 0;
+		m_maxTriGroupCount = 0;
 	}
 }
