@@ -7,7 +7,7 @@
 #include "../../../Util/D3DUtil.h"
 #include "../RenderHelper/GpuDescriptorLinearAllocator.h"
 #include "../RenderHelper/ConstantBufferPool.h"
-#include "../ResourceManager/CD3D12ResourceManager.h"
+#include "../Manager/CD3D12ResourceManager.h"
 
 ID3D12RootSignature* CBasicMeshObject::m_pRootSignature = nullptr;
 ID3D12PipelineState* CBasicMeshObject::m_pPipelineStateObject = nullptr;
@@ -69,8 +69,8 @@ bool CBasicMeshObject::InitRootSignature()
 	rootParameters[0].InitAsDescriptorTable(_countof(rangesPerObj), rangesPerObj, D3D12_SHADER_VISIBILITY_ALL);
 	rootParameters[1].InitAsDescriptorTable(_countof(rangesPerTriGroup), rangesPerTriGroup, D3D12_SHADER_VISIBILITY_ALL);
 
-	D3D12_STATIC_SAMPLER_DESC sampler = {};
-	SetDefaultSamplerDesc(&sampler, 0);
+	CD3DX12_STATIC_SAMPLER_DESC sampler{0};
+	//SetDefaultSamplerDesc(&sampler, 0);
 	sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
 
 	CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
@@ -228,7 +228,7 @@ void CBasicMeshObject::Draw(ID3D12GraphicsCommandList* pCommandList, const XMMAT
 	}
 
 	ID3D12Device5* pD3DDevice = m_pRenderer->GetD3DDevice();
-	CConstantBufferPool* pConstantBufferPool = m_pRenderer->GetConstantBufferPool();
+	CConstantBufferPool* pConstantBufferPool = m_pRenderer->GetConstantBufferPool(ConstantBufferTypeDefault);
 	CGpuDescriptorLinearAllocator* pDescriptorAllocator = m_pRenderer->GetDescriptorPool();
 
 	ID3D12DescriptorHeap* pDescriptorHeap = pDescriptorAllocator->GetDescriptorHeap();

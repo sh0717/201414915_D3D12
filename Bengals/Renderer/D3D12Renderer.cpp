@@ -8,12 +8,15 @@
 #include <functional>
 #include <iostream>
 
-#include "ResourceManager/CD3D12ResourceManager.h"
+#include "Manager/CD3D12ResourceManager.h"
 #include "RenderHelper/ConstantBufferPool.h"
+#include "RenderHelper/ConstantBufferManager.h"
 #include "RenderHelper/GpuDescriptorLinearAllocator.h"
 #include "RenderHelper/CpuDescriptorFreeListAllocator.h"
 
-#include "BasicMeshObject/BasicMeshObject.h"
+#include "RenderObject/BasicMeshObject.h"
+#include "RenderObject/SpriteObject.h"
+#include "Manager/TextureManager.h"
 #include "../Types/typedef.h"
 
 CD3D12Renderer::CD3D12Renderer(HWND hWindow, bool bEnableDebugLayer, bool bEnableGbv)
@@ -212,12 +215,15 @@ bool CD3D12Renderer::Initialize(HWND hWindow, bool bEnableDebugLayer, bool bEnab
 		ctx.DescriptorPool = std::make_unique<CGpuDescriptorLinearAllocator>();
 		ctx.DescriptorPool->Initialize(m_pD3DDevice, MAX_DRAW_COUNT_PER_FRAME * CBasicMeshObject::MaxDescriptorCountForDraw);
 
-		ctx.ConstantBufferPool = std::make_unique<CConstantBufferPool>();
-		ctx.ConstantBufferPool->Initialize(m_pD3DDevice, static_cast<UINT>(AlignConstantBufferSize(sizeof(ConstantBufferDefault))), MAX_DRAW_COUNT_PER_FRAME);
+		ctx.ConstantBufferManager = std::make_unique<CConstantBufferManager>();
+		ctx.ConstantBufferManager->Initialize(m_pD3DDevice, MAX_DRAW_COUNT_PER_FRAME);
 	}
 
 	m_descriptorAllocator = std::make_unique<CCpuDescriptorFreeListAllocator>();
 	m_descriptorAllocator->Initialize(m_pD3DDevice, MAX_DESCRIPTOR_COUNT);
+
+	m_textureManager = std::make_unique<CTextureManager>();
+	m_textureManager->Initialize(this);
 
 	return bResult = true;
 }
@@ -293,7 +299,7 @@ void CD3D12Renderer::Present()
 	WaitForFenceValue(nextCtx.LastFenceValue);
 
 	// 다음 컨텍스트의 풀 리셋
-	nextCtx.ConstantBufferPool->Reset();
+	nextCtx.ConstantBufferManager->Reset();
 	nextCtx.DescriptorPool->Reset();
 
 	// 컨텍스트 전환
@@ -403,20 +409,95 @@ void CD3D12Renderer::RenderMeshObject(void* pMeshObjectHandle, const XMMATRIX& w
 
 void CD3D12Renderer::DeleteBasicMeshObject(void* pMeshObjectHandle)
 {
+	// wait for all commands
+	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
+	{
+		WaitForFenceValue(m_frameContexts[i].LastFenceValue);
+	}
+
 	CBasicMeshObject* pMeshObject = (CBasicMeshObject*)pMeshObjectHandle;
 	delete pMeshObject;
 }
 
+void* CD3D12Renderer::CreateSpriteObject()
+{
+	CSpriteObject* pSpriteObject = new CSpriteObject(this);
+	return pSpriteObject;
+}
+
+void* CD3D12Renderer::CreateSpriteObject(const WCHAR* wchTexFileName, int posX, int posY, int width, int height)
+{
+	RECT rect = {};
+	RECT* pRect = nullptr;
+
+	if (width > 0 && height > 0)
+	{
+		rect.left = posX;
+		rect.top = posY;
+		rect.right = posX + width;
+		rect.bottom = posY + height;
+		pRect = &rect;
+	}
+
+	CSpriteObject* pSpriteObject = new CSpriteObject(this, wchTexFileName, pRect);
+	return pSpriteObject;
+}
+
+void CD3D12Renderer::DeleteSpriteObject(void* pSpriteObjectHandle)
+{
+	// wait for all commands
+	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
+	{
+		WaitForFenceValue(m_frameContexts[i].LastFenceValue);
+	}
+
+	CSpriteObject* pSpriteObject = (CSpriteObject*)pSpriteObjectHandle;
+	delete pSpriteObject;
+}
+
+void CD3D12Renderer::RenderSpriteWithTex(void* pSpriteObjectHandle, int posX, int posY, int width, int height, const RECT* pRect, float z, void* pTexHandle)
+{
+	CSpriteObject* pSpriteObject = (CSpriteObject*)pSpriteObjectHandle;
+	TextureHandle* pTextureHandle = (TextureHandle*)pTexHandle;
+	if (!pSpriteObject || !pTextureHandle)
+	{
+		return;
+	}
+
+	if (pTextureHandle->pUploadBuffer)
+	{
+		if (pTextureHandle->bUpdated)
+		{
+			UpdateTexture(m_pD3DDevice, m_frameContexts[m_currentContextIndex].pCommandList, pTextureHandle->TextureResource, pTextureHandle->pUploadBuffer);
+		}
+	}
+
+	XMFLOAT2 pos = { static_cast<float>(posX), static_cast<float>(posY) };
+	XMFLOAT2 pixelSize = { static_cast<float>(width), static_cast<float>(height) };
+	pSpriteObject->DrawWithTex(m_frameContexts[m_currentContextIndex].pCommandList, pos, pixelSize, pRect, z, pTextureHandle);
+}
+
+void CD3D12Renderer::RenderSprite(void* pSpriteObjectHandle, int posX, int posY, int width, int height, float z)
+{
+	CSpriteObject* pSpriteObject = (CSpriteObject*)pSpriteObjectHandle;
+	if (!pSpriteObject)
+	{
+		return;
+	}
+
+	XMFLOAT2 pos = { static_cast<float>(posX), static_cast<float>(posY) };
+	XMFLOAT2 pixelSize = { static_cast<float>(width), static_cast<float>(height) };
+	pSpriteObject->Draw(m_frameContexts[m_currentContextIndex].pCommandList, pos, pixelSize, z);
+}
+
+void CD3D12Renderer::UpdateTextureWithImage(void* pTexHandle, const BYTE* pSrcBits, UINT SrcWidth, UINT SrcHeight)
+{
+	m_textureManager->UpdateTextureWithImage((TextureHandle*)pTexHandle, pSrcBits, SrcWidth, SrcHeight);
+}
+
 void* CD3D12Renderer::CreateTiledTexture(UINT texWidth, UINT texHeight, BYTE r, BYTE g, BYTE b)
 {
-	TextureHandle* pTextureHandle = nullptr;
-
-	BOOL bResult = FALSE;
-	ID3D12Resource* pTexResource = nullptr;
-	D3D12_CPU_DESCRIPTOR_HANDLE srv = {};
-
-
-	DXGI_FORMAT texFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+	DXGI_FORMAT textureFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 
 	BYTE* pImage = (BYTE*)malloc(texWidth * texHeight * 4);
 	memset(pImage, 0, texWidth * texHeight * 4);
@@ -428,7 +509,7 @@ void* CD3D12Renderer::CreateTiledTexture(UINT texWidth, UINT texHeight, BYTE r, 
 		for (UINT x = 0; x < texWidth; x++)
 		{
 
-			URGBA* pDest = (URGBA*)(pImage + (x + y * texWidth) * 4);
+			RGBA* pDest = (RGBA*)(pImage + (x + y * texWidth) * 4);
 
 			if ((bFirstColorIsWhite + x) % 2)
 			{
@@ -447,84 +528,33 @@ void* CD3D12Renderer::CreateTiledTexture(UINT texWidth, UINT texHeight, BYTE r, 
 		bFirstColorIsWhite++;
 		bFirstColorIsWhite %= 2;
 	}
-	if (m_resourceManager->CreateTexture(&pTexResource, texWidth, texHeight, texFormat, pImage))
-	{
-		D3D12_SHADER_RESOURCE_VIEW_DESC SRVDesc = {};
-		SRVDesc.Format = texFormat;
-		SRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		SRVDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-		SRVDesc.Texture2D.MipLevels = 1;
+	TextureHandle* pTexHandle = m_textureManager->CreateStaticTexture(texWidth, texHeight, textureFormat, pImage);
 
-		if (m_descriptorAllocator->Allocate(&srv))
-		{
-			m_pD3DDevice->CreateShaderResourceView(pTexResource, &SRVDesc, srv);
-
-			pTextureHandle = new TextureHandle;
-			pTextureHandle->TextureResource = pTexResource;
-			pTextureHandle->SrvDescriptorHandle = srv;
-			bResult = TRUE;
-		}
-		else
-		{
-			pTexResource->Release();
-			pTexResource = nullptr;
-		}
-	}
 	free(pImage);
 	pImage = nullptr;
 
-	return pTextureHandle;
+	return pTexHandle;
+}
+
+void* CD3D12Renderer::CreateDynamicTexture(UINT texWidth, UINT texHeight)
+{
+	return m_textureManager->CreateDynamicTexture(texWidth, texHeight);
 }
 
 void* CD3D12Renderer::CreateTextureFromFile(const WCHAR* filePath)
 {
-	TextureHandle* pTextureHandle = nullptr;
-	ID3D12Resource* pTexResource = nullptr;
-	D3D12_RESOURCE_DESC texDesc = {};
-	D3D12_CPU_DESCRIPTOR_HANDLE srv = {};
-
-	if (!m_resourceManager->CreateTextureFromFile(&pTexResource, &texDesc, filePath))
-	{
-		return nullptr;
-	}
-
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-	srvDesc.Format = texDesc.Format;
-	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srvDesc.Texture2D.MipLevels = texDesc.MipLevels;
-
-	if (m_descriptorAllocator->Allocate(&srv))
-	{
-		m_pD3DDevice->CreateShaderResourceView(pTexResource, &srvDesc, srv);
-
-		pTextureHandle = new TextureHandle;
-		pTextureHandle->TextureResource = pTexResource;
-		pTextureHandle->SrvDescriptorHandle = srv;
-	}
-	else
-	{
-		pTexResource->Release();
-		pTexResource = nullptr;
-	}
-
-	return pTextureHandle;
+	return m_textureManager->CreateTextureFromFile(filePath);
 }
 
 void CD3D12Renderer::DeleteTexture(void* pTextureHandle)
 {
-	TextureHandle* pTextureData = (TextureHandle*)pTextureHandle;
-
-	ID3D12Resource* pTexResource = pTextureData->TextureResource;
-	D3D12_CPU_DESCRIPTOR_HANDLE srv = pTextureData->SrvDescriptorHandle;
-
-	if (pTexResource)
+	// GPU 작업 완료 대기 (fence는 renderer 소유)
+	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
 	{
-		pTexResource->Release();
+		WaitForFenceValue(m_frameContexts[i].LastFenceValue);
 	}
-	m_descriptorAllocator->Free(srv);
 
-	delete pTextureData;
+	m_textureManager->DeleteTexture((TextureHandle*)pTextureHandle);
 }
 
 void CD3D12Renderer::GetViewProjMatrix(XMMATRIX* pOutViewMatrix, XMMATRIX* pOutProjMatrix)
@@ -698,11 +728,11 @@ void CD3D12Renderer::Cleanup()
 	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
 	{
 		m_frameContexts[i].DescriptorPool = nullptr;
-		m_frameContexts[i].ConstantBufferPool = nullptr;
+		m_frameContexts[i].ConstantBufferManager = nullptr;
 	}
 
+	m_textureManager = nullptr;
 	m_resourceManager = nullptr;
-
 	m_descriptorAllocator = nullptr;
 
 	CleanupDescriptorHeap();

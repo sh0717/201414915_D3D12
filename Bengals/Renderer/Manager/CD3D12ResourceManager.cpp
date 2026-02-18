@@ -461,6 +461,59 @@ bool CD3D12ResourceManager::CreateTextureFromFile(ID3D12Resource** ppOutResource
 	return true;
 }
 
+bool CD3D12ResourceManager::CreateTexturePair(ID3D12Resource** ppOutResource, ID3D12Resource** ppOutUploadBuffer, UINT Width, UINT Height, DXGI_FORMAT format)
+{
+	if (!ppOutResource || !ppOutUploadBuffer)
+	{
+		__debugbreak();
+		return false;
+	}
+
+	ComPtr<ID3D12Resource> texResource = nullptr;
+	ComPtr<ID3D12Resource> uploadBuffer = nullptr;
+
+	D3D12_RESOURCE_DESC textureDesc = {};
+	textureDesc.MipLevels = 1;
+	textureDesc.Format = format;	// ex) DXGI_FORMAT_R8G8B8A8_UNORM, etc...
+	textureDesc.Width = Width;
+	textureDesc.Height = Height;
+	textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+	textureDesc.DepthOrArraySize = 1;
+	textureDesc.SampleDesc.Count = 1;
+	textureDesc.SampleDesc.Quality = 0;
+	textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+
+	if (FAILED(m_pD3DDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+		D3D12_HEAP_FLAG_NONE,
+		&textureDesc,
+		D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE,
+		nullptr,
+		IID_PPV_ARGS(texResource.ReleaseAndGetAddressOf()))))
+	{
+		__debugbreak();
+		return false;
+	}
+
+	UINT64 uploadBufferSize = GetRequiredIntermediateSize(texResource.Get(), 0, 1);
+
+	if (FAILED(m_pD3DDevice->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(uploadBuffer.ReleaseAndGetAddressOf()))))
+	{
+		__debugbreak();
+		return false;
+	}
+	*ppOutResource = texResource.Detach();
+	*ppOutUploadBuffer = uploadBuffer.Detach();
+
+	return true;
+}
+
 UINT64 CD3D12ResourceManager::Fence()
 {
 	m_fenceValue++;

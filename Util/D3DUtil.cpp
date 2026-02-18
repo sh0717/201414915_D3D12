@@ -3,6 +3,8 @@
 #include <d3d12.h>
 #include <d3dx12.h>
 #include "D3DUtil.h"
+#include "Renderer/D3D12Renderer.h"
+#include "Types/typedef.h"
 
 static void EnsureDebugConsole()
 {
@@ -140,60 +142,27 @@ void SetDebugLayerInfo(ID3D12Device* InD3DDevice)
 	}
 }
 
-void SetDefaultSamplerDesc(D3D12_STATIC_SAMPLER_DESC* pOutSamperDesc, UINT RegisterIndex)
+void SetDefaultSamplerDesc(D3D12_STATIC_SAMPLER_DESC* pOutSamplerDesc, UINT RegisterIndex)
 {
-	D3D12_STATIC_SAMPLER_DESC sampler = {};
-	//pOutSamperDesc->Filter = D3D12_FILTER_ANISOTROPIC;
-	pOutSamperDesc->Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-
-	pOutSamperDesc->AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	pOutSamperDesc->AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	pOutSamperDesc->AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-	pOutSamperDesc->MipLODBias = 0.0f;
-	pOutSamperDesc->MaxAnisotropy = 16;
-	pOutSamperDesc->ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
-	pOutSamperDesc->BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
-	pOutSamperDesc->MinLOD = -FLT_MAX;
-	pOutSamperDesc->MaxLOD = D3D12_FLOAT32_MAX;
-	pOutSamperDesc->ShaderRegister = RegisterIndex;
-	pOutSamperDesc->RegisterSpace = 0;
-	pOutSamperDesc->ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-}
-
-HRESULT CreateVertexBuffer(ID3D12Device* pDevice, UINT SizePerVertex, DWORD dwVertexNum, D3D12_VERTEX_BUFFER_VIEW* pOutVertexBufferView, ID3D12Resource **ppOutBuffer)
-{
-	HRESULT hr = S_OK;
-
-	D3D12_VERTEX_BUFFER_VIEW	VertexBufferView = {};
-	ID3D12Resource*	pVertexBuffer = nullptr;
-	UINT		VertexBufferSize = SizePerVertex * dwVertexNum;
-
-	// create vertexbuffer for rendering
-	hr = pDevice->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(VertexBufferSize),
-		D3D12_RESOURCE_STATE_COMMON,
-		nullptr,
-		IID_PPV_ARGS(&pVertexBuffer));
-
-	if (FAILED(hr))
+	if (!pOutSamplerDesc)
 	{
-		goto lb_return;
+		__debugbreak();
 	}
 
-	// Initialize the vertex buffer view.
-	VertexBufferView.BufferLocation = pVertexBuffer->GetGPUVirtualAddress();
-	VertexBufferView.StrideInBytes = SizePerVertex;
-	VertexBufferView.SizeInBytes = VertexBufferSize;
-
-	*pOutVertexBufferView = VertexBufferView;
-	*ppOutBuffer = pVertexBuffer;
-
-lb_return:
-	return hr;
+	pOutSamplerDesc->Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+	pOutSamplerDesc->AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	pOutSamplerDesc->AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	pOutSamplerDesc->AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+	pOutSamplerDesc->MipLODBias = 0.0f;
+	pOutSamplerDesc->MaxAnisotropy = 16;
+	pOutSamplerDesc->ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+	pOutSamplerDesc->BorderColor = D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
+	pOutSamplerDesc->MinLOD = -FLT_MAX;
+	pOutSamplerDesc->MaxLOD = D3D12_FLOAT32_MAX;
+	pOutSamplerDesc->ShaderRegister = RegisterIndex;
+	pOutSamplerDesc->RegisterSpace = 0;
+	pOutSamplerDesc->ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 }
-
 
 void UpdateTexture(ID3D12Device* pD3DDevice, ID3D12GraphicsCommandList* pCommandList, ID3D12Resource* pDestTexResource, ID3D12Resource* pSrcTexResource)
 {
@@ -228,4 +197,167 @@ void UpdateTexture(ID3D12Device* pD3DDevice, ID3D12GraphicsCommandList* pCommand
 	}
 	pCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pDestTexResource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE));
 
+}
+
+void* CreateBoxMeshObject(CD3D12Renderer* pRenderer)
+{
+	if (!pRenderer)
+	{
+		return nullptr;
+	}
+
+	static constexpr float HalfBoxLen = 0.25f;
+	const XMFLOAT3 worldPosList[8] =
+	{
+		{ -HalfBoxLen, HalfBoxLen, HalfBoxLen },
+		{ -HalfBoxLen, -HalfBoxLen, HalfBoxLen },
+		{ HalfBoxLen, -HalfBoxLen, HalfBoxLen },
+		{ HalfBoxLen, HalfBoxLen, HalfBoxLen },
+		{ -HalfBoxLen, HalfBoxLen, -HalfBoxLen },
+		{ -HalfBoxLen, -HalfBoxLen, -HalfBoxLen },
+		{ HalfBoxLen, -HalfBoxLen, -HalfBoxLen },
+		{ HalfBoxLen, HalfBoxLen, -HalfBoxLen }
+	};
+
+	const WORD worldPosIndexList[36] =
+	{
+		// +z
+		3, 0, 1, 3, 1, 2,
+		// -z
+		4, 7, 6, 4, 6, 5,
+		// -x
+		0, 4, 5, 0, 5, 1,
+		// +x
+		7, 3, 2, 7, 2, 6,
+		// +y
+		0, 3, 7, 0, 7, 4,
+		// -y
+		2, 1, 5, 2, 5, 6
+	};
+
+	const XMFLOAT2 texCoordList[36] =
+	{
+		// +z
+		{ 0.0f, 0.0f }, { 1.0f, 0.0f }, { 1.0f, 1.0f },
+		{ 0.0f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f },
+		// -z
+		{ 0.0f, 0.0f }, { 1.0f, 0.0f }, { 1.0f, 1.0f },
+		{ 0.0f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f },
+		// -x
+		{ 0.0f, 0.0f }, { 1.0f, 0.0f }, { 1.0f, 1.0f },
+		{ 0.0f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f },
+		// +x
+		{ 0.0f, 0.0f }, { 1.0f, 0.0f }, { 1.0f, 1.0f },
+		{ 0.0f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f },
+		// +y
+		{ 0.0f, 0.0f }, { 1.0f, 0.0f }, { 1.0f, 1.0f },
+		{ 0.0f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f },
+		// -y
+		{ 0.0f, 0.0f }, { 1.0f, 0.0f }, { 1.0f, 1.0f },
+		{ 0.0f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f }
+	};
+
+	VertexPos3Color4Tex2 vertexList[_countof(worldPosIndexList)] = {};
+	WORD indexList[_countof(worldPosIndexList)] = {};
+	for (UINT i = 0; i < _countof(worldPosIndexList); i++)
+	{
+		const WORD worldPosIndex = worldPosIndexList[i];
+		vertexList[i].Position = worldPosList[worldPosIndex];
+		vertexList[i].Color = { 1.0f, 1.0f, 1.0f, 1.0f };
+		vertexList[i].TexCoord = texCoordList[i];
+		indexList[i] = static_cast<WORD>(i);
+	}
+
+	const WCHAR* textureFileNameList[6] =
+	{
+		L"../Resources/Image/tex_00.dds",
+		L"../Resources/Image/tex_01.dds",
+		L"../Resources/Image/tex_02.dds",
+		L"../Resources/Image/tex_03.dds",
+		L"../Resources/Image/tex_04.dds",
+		L"../Resources/Image/tex_05.dds"
+	};
+
+	void* pMeshObject = pRenderer->CreateBasicMeshObject();
+	if (!pMeshObject)
+	{
+		return nullptr;
+	}
+
+	bool bResult = pRenderer->BeginCreateMesh(
+		pMeshObject,
+		vertexList,
+		_countof(vertexList),
+		sizeof(VertexPos3Color4Tex2),
+		6);
+
+	if (bResult)
+	{
+		for (UINT i = 0; i < 6; i++)
+		{
+			bResult = pRenderer->InsertTriGroup(pMeshObject, indexList + i * 6, 2, textureFileNameList[i]);
+			if (!bResult)
+			{
+				break;
+			}
+		}
+	}
+
+	if (!bResult)
+	{
+		pRenderer->DeleteBasicMeshObject(pMeshObject);
+		return nullptr;
+	}
+
+	pRenderer->EndCreateMesh(pMeshObject);
+	return pMeshObject;
+}
+
+void* CreateQuadMeshObject(CD3D12Renderer* pRenderer)
+{
+	if (!pRenderer)
+	{
+		return nullptr;
+	}
+
+	VertexPos3Color4Tex2 vertexList[] =
+	{
+		{ { -0.25f, 0.25f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f } },
+		{ { 0.25f, 0.25f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f } },
+		{ { 0.25f, -0.25f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f } },
+		{ { -0.25f, -0.25f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f } }
+	};
+
+	WORD indexList[] =
+	{
+		0, 1, 2,
+		0, 2, 3
+	};
+
+	void* pMeshObject = pRenderer->CreateBasicMeshObject();
+	if (!pMeshObject)
+	{
+		return nullptr;
+	}
+
+	bool bResult = pRenderer->BeginCreateMesh(
+		pMeshObject,
+		vertexList,
+		_countof(vertexList),
+		sizeof(VertexPos3Color4Tex2),
+		1);
+
+	if (bResult)
+	{
+		bResult = pRenderer->InsertTriGroup(pMeshObject, indexList, 2, L"../Resources/Image/tex_06.dds");
+	}
+
+	if (!bResult)
+	{
+		pRenderer->DeleteBasicMeshObject(pMeshObject);
+		return nullptr;
+	}
+
+	pRenderer->EndCreateMesh(pMeshObject);
+	return pMeshObject;
 }

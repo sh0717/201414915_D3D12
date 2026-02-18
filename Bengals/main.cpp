@@ -6,6 +6,7 @@
 #include "Resource.h"
 #include "Renderer/D3D12Renderer.h"
 #include "Types/typedef.h"
+#include "../Util/D3DUtil.h"
 
 // required .lib files
 #pragma comment(lib, "DXGI.lib")
@@ -44,6 +45,8 @@ WCHAR g_windowClass[MAX_LOADSTRING];            // the main window class name
 std::unique_ptr<CD3D12Renderer> g_renderer = nullptr;
 void* g_pMeshObject0 = nullptr;
 void* g_pMeshObject1 = nullptr;
+void* g_pSpriteObject0 = nullptr;
+void* g_pSpriteObjCommon = nullptr;
 
 XMMATRIX g_worldMatrix0 = {};
 XMMATRIX g_worldMatrix1 = {};
@@ -53,6 +56,14 @@ float g_rotation1 = 0.f;
 ULONGLONG g_previousFrameCheckTick = 0;
 ULONGLONG g_previousUpdateTick = 0;
 DWORD	g_frameCount = 0;
+
+
+//dynamic texture
+void* g_pDynamicTexHandle = nullptr;
+BYTE* g_pImage = nullptr;
+UINT g_ImageWidth = 0;
+UINT g_ImageHeight = 0;
+//~dynamic texture
 
 static void RunGame();
 static void Update();
@@ -100,32 +111,33 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 		__debugbreak();
 	}
 
-	// quad vertices (shared by all tri-groups)
-	VertexPos3Color4Tex2 vertices[] =
+	g_pMeshObject0 = CreateBoxMeshObject(g_renderer.get());
+	g_pMeshObject1 = CreateQuadMeshObject(g_renderer.get());
+	if (!g_pMeshObject0 || !g_pMeshObject1)
 	{
-		{ { -0.25f,  0.25f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.f, 0.f } },
-		{ {  0.25f,  0.25f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.f, 0.f } },
-		{ {  0.25f, -0.25f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.f, 1.f } },
-		{ { -0.25f, -0.25f, 0.0f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.f, 1.f } }
-	};
+		__debugbreak();
+	}
 
-	// mesh0: multi-material (2 tri-groups, each triangle has a different texture)
-	WORD indicesGroup0[] = { 0, 1, 2 };
-	WORD indicesGroup1[] = { 0, 2, 3 };
 
-	g_pMeshObject0 = g_renderer->CreateBasicMeshObject();
-	g_renderer->BeginCreateMesh(g_pMeshObject0, vertices, _countof(vertices), sizeof(VertexPos3Color4Tex2), 2);
-	g_renderer->InsertTriGroup(g_pMeshObject0, indicesGroup0, 1, L"../Resources/Image/tex_00.dds");
-	g_renderer->InsertTriGroup(g_pMeshObject0, indicesGroup1, 1, L"../Resources/Image/tex_01.dds");
-	g_renderer->EndCreateMesh(g_pMeshObject0);
+	g_ImageWidth = 512;
+	g_ImageHeight = 256;
+	g_pImage = (BYTE*)malloc(g_ImageWidth * g_ImageHeight * 4);
+	DWORD* pDest = (DWORD*)g_pImage;
+	for (DWORD y = 0; y < g_ImageHeight; y++)
+	{
+		for (DWORD x = 0; x < g_ImageWidth; x++)
+		{
+			pDest[x + g_ImageWidth * y] = 0xff0000ff;
+		}
+	}
+	g_pDynamicTexHandle = g_renderer->CreateDynamicTexture(g_ImageWidth, g_ImageHeight);
 
-	// mesh1: single material (1 tri-group)
-	WORD indicesFull[] = { 0, 1, 2, 0, 2, 3 };
+	g_pSpriteObject0 = g_renderer->CreateSpriteObject(
+		L"../Resources/Image/sprite_1024x1024.dds",
+		512, 512, 512, 512);
+	g_pSpriteObjCommon = g_renderer->CreateSpriteObject();
 
-	g_pMeshObject1 = g_renderer->CreateBasicMeshObject();
-	g_renderer->BeginCreateMesh(g_pMeshObject1, vertices, _countof(vertices), sizeof(VertexPos3Color4Tex2), 1);
-	g_renderer->InsertTriGroup(g_pMeshObject1, indicesFull, 2, L"../Resources/Image/miku.dds");
-	g_renderer->EndCreateMesh(g_pMeshObject1);
+
 	// Main message loop:
 	//while (GetMessage(&msg, nullptr, 0, 0))
 	//{
@@ -166,6 +178,29 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 		g_pMeshObject1 = nullptr;
 	}
 
+	if (g_pSpriteObject0)
+	{
+		g_renderer->DeleteSpriteObject(g_pSpriteObject0);
+		g_pSpriteObject0 = nullptr;
+	}
+
+	if (g_pImage)
+	{
+		free(g_pImage);
+		g_pImage = nullptr;
+	}
+
+	if (g_pSpriteObjCommon)
+	{
+		g_renderer->DeleteSpriteObject(g_pSpriteObjCommon);
+		g_pSpriteObjCommon = nullptr;
+	}
+
+	if (g_pDynamicTexHandle)
+	{
+		g_renderer->DeleteTexture(g_pDynamicTexHandle);
+		g_pDynamicTexHandle = nullptr;
+	}
 
 	g_renderer.reset();
 
@@ -189,10 +224,20 @@ void RunGame()
 		Update();
 		g_previousUpdateTick = CurTick;
 	}
-
+	RECT rect;
+	rect.left = 0;
+	rect.top = 0;
+	rect.right = 256;
+	rect.bottom = 256;
 	// rendering objects
 	g_renderer->RenderMeshObject(g_pMeshObject0, g_worldMatrix0);
 	g_renderer->RenderMeshObject(g_pMeshObject1, g_worldMatrix1);
+
+	g_renderer->RenderSprite(g_pSpriteObject0, 100, 80, 100, 100, 0.f);
+
+	//render dynamic texture
+	g_renderer->RenderSpriteWithTex(g_pSpriteObjCommon, 0, 300, 300, 200, nullptr, 0.f, g_pDynamicTexHandle);
+
 	g_renderer->EndRender();
 	g_renderer->Present();
 
@@ -216,14 +261,18 @@ void Update()
 	//
 	g_worldMatrix0 = XMMatrixIdentity();
 
+	//scale
+	XMMATRIX matScale0 = XMMatrixScaling(0.5, 0.5, 0.5);
+
 	// rotation 
 	XMMATRIX matRot0 = XMMatrixRotationX(g_rotation0);
 
 	// translation
-	XMMATRIX matTrans0 = XMMatrixTranslation(-0.15f, 0.0f, 0.25f);
+	XMMATRIX matTrans0 = XMMatrixTranslation(-0.55f, 0.f, 0.25f);
 
 	// rot0 x trans0
 	g_worldMatrix0 = XMMatrixMultiply(matRot0, matTrans0);
+	g_worldMatrix0 = XMMatrixMultiply(matScale0, g_worldMatrix0);
 
 	//
 	// world matrix 1
@@ -231,6 +280,9 @@ void Update()
 	g_worldMatrix1 = XMMatrixIdentity();
 
 	// world matrix 1
+	//scale
+	XMMATRIX matScale1 = XMMatrixScaling(1.0, 1.0, 1.0);
+
 	// rotation 
 	XMMATRIX matRot1 = XMMatrixRotationY(g_rotation1);
 
@@ -239,6 +291,7 @@ void Update()
 
 	// rot1 x trans1
 	g_worldMatrix1 = XMMatrixMultiply(matRot1, matTrans1);
+	g_worldMatrix1 = XMMatrixMultiply(matScale1, g_worldMatrix1);
 
 	BOOL	bChangeTex = FALSE;
 	g_rotation0 += 0.05f;
@@ -253,6 +306,69 @@ void Update()
 	{
 		g_rotation1 = 0.0f;
 	}
+
+	// Update Texture
+	static DWORD g_dwCount = 0;
+	static DWORD g_dwTileColorR = 0;
+	static DWORD g_dwTileColorG = 0;
+	static DWORD g_dwTileColorB = 0;
+
+	const DWORD TILE_WIDTH = 16;
+	const DWORD TILE_HEIGHT = 16;
+
+	DWORD TILE_WIDTH_COUNT = g_ImageWidth / TILE_WIDTH;
+	DWORD TILE_HEIGHT_COUNT = g_ImageHeight / TILE_HEIGHT;
+
+	if (g_dwCount >= TILE_WIDTH_COUNT * TILE_HEIGHT_COUNT)
+	{
+		g_dwCount = 0;
+	}
+	DWORD TileY = g_dwCount / TILE_WIDTH_COUNT;
+	DWORD TileX = g_dwCount % TILE_WIDTH_COUNT;
+
+	DWORD StartX = TileX * TILE_WIDTH;
+	DWORD StartY = TileY * TILE_HEIGHT;
+
+
+	//DWORD r = rand() % 256;
+	//DWORD g = rand() % 256;
+	//DWORD b = rand() % 256;
+
+	DWORD r = g_dwTileColorR;
+	DWORD g = g_dwTileColorG;
+	DWORD b = g_dwTileColorB;
+
+	DWORD* pDest = (DWORD*)g_pImage;
+	for (DWORD y = 0; y < 16; y++)
+	{
+		for (DWORD x = 0; x < 16; x++)
+		{
+			if (StartX + x >= g_ImageWidth)
+				__debugbreak();
+
+			if (StartY + y >= g_ImageHeight)
+				__debugbreak();
+
+			pDest[(StartX + x) + (StartY + y) * g_ImageWidth] = 0xff000000 | (b << 16) | (g << 8) | r;
+		}
+	}
+	g_dwCount++;
+	g_dwTileColorR += 8;
+	if (g_dwTileColorR > 255)
+	{
+		g_dwTileColorR = 0;
+		g_dwTileColorG += 8;
+	}
+	if (g_dwTileColorG > 255)
+	{
+		g_dwTileColorG = 0;
+		g_dwTileColorB += 8;
+	}
+	if (g_dwTileColorB > 255)
+	{
+		g_dwTileColorB = 0;
+	}
+	g_renderer->UpdateTextureWithImage(g_pDynamicTexHandle, g_pImage, g_ImageWidth, g_ImageHeight);
 }
 
 //
@@ -388,4 +504,3 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 	}
 	return (INT_PTR)FALSE;
 }
-

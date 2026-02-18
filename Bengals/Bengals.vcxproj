@@ -183,12 +183,15 @@
     <ClInclude Include="..\Util\D3DUtil.h" />
     <ClInclude Include="..\Util\IndexCreator.h" />
     <ClInclude Include="pch.h" />
-    <ClInclude Include="Renderer\BasicMeshObject\BasicMeshObject.h" />
+    <ClInclude Include="Renderer\RenderObject\BasicMeshObject.h" />
     <ClInclude Include="Renderer\D3D12Renderer.h" />
+    <ClInclude Include="Renderer\RenderHelper\ConstantBufferManager.h" />
     <ClInclude Include="Renderer\RenderHelper\ConstantBufferPool.h" />
     <ClInclude Include="Renderer\RenderHelper\CpuDescriptorFreeListAllocator.h" />
     <ClInclude Include="Renderer\RenderHelper\GpuDescriptorLinearAllocator.h" />
-    <ClInclude Include="Renderer\ResourceManager\CD3D12ResourceManager.h" />
+    <ClInclude Include="Renderer\Manager\CD3D12ResourceManager.h" />
+    <ClInclude Include="Renderer\Manager\TextureManager.h" />
+    <ClInclude Include="Renderer\RenderObject\SpriteObject.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="Types\typedef.h" />
@@ -203,12 +206,15 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="Renderer\BasicMeshObject\BasicMeshObject.cpp" />
+    <ClCompile Include="Renderer\RenderObject\BasicMeshObject.cpp" />
     <ClCompile Include="Renderer\D3D12Renderer.cpp" />
+    <ClCompile Include="Renderer\RenderHelper\ConstantBufferManager.cpp" />
     <ClCompile Include="Renderer\RenderHelper\ConstantBufferPool.cpp" />
     <ClCompile Include="Renderer\RenderHelper\CpuDescriptorFreeListAllocator.cpp" />
     <ClCompile Include="Renderer\RenderHelper\GpuDescriptorLinearAllocator.cpp" />
-    <ClCompile Include="Renderer\ResourceManager\CD3D12ResourceManager.cpp" />
+    <ClCompile Include="Renderer\Manager\CD3D12ResourceManager.cpp" />
+    <ClCompile Include="Renderer\Manager\TextureManager.cpp" />
+    <ClCompile Include="Renderer\RenderObject\SpriteObject.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Bengals.rc" />
@@ -234,6 +240,7 @@
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
+    <None Include="Renderer\Shaders\SpriteShader.hlsl" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>

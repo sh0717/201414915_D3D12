@@ -7,9 +7,11 @@
 
 class CD3D12ResourceManager;
 class CCpuDescriptorFreeListAllocator;
+class CConstantBufferManager;
+class CTextureManager;
 
 #include "RenderHelper/GpuDescriptorLinearAllocator.h"
-#include "RenderHelper/ConstantBufferPool.h"
+#include "RenderHelper/ConstantBufferManager.h"
 
 struct FrameContext
 {
@@ -17,7 +19,7 @@ struct FrameContext
 	ID3D12CommandAllocator* pCommandAllocator = nullptr;
 	ID3D12GraphicsCommandList* pCommandList = nullptr;
 	std::unique_ptr<CGpuDescriptorLinearAllocator> DescriptorPool = nullptr;
-	std::unique_ptr<CConstantBufferPool> ConstantBufferPool = nullptr;
+	std::unique_ptr<CConstantBufferManager> ConstantBufferManager = nullptr;
 	uint64_t LastFenceValue = 0;
 };
 
@@ -49,9 +51,24 @@ public:/*function*/
 		return m_frameContexts[m_currentContextIndex].DescriptorPool.get();
 	}
 
-	CConstantBufferPool* GetConstantBufferPool() const
+	CCpuDescriptorFreeListAllocator* GetDescriptorAllocator() const
 	{
-		return m_frameContexts[m_currentContextIndex].ConstantBufferPool.get();
+		return m_descriptorAllocator.get();
+	}
+
+	CConstantBufferPool* GetConstantBufferPool(ConstantBufferType type) const
+	{
+		return m_frameContexts[m_currentContextIndex].ConstantBufferManager->GetConstantBufferPool(type);
+	}
+
+	UINT GetScreenWidth() const
+	{
+		return m_viewportWidth;
+	}
+
+	UINT GetScreenHeight() const
+	{
+		return m_viewportHeight;
 	}
 
 	bool UpdateWindowSize(UINT backBufferWidth, UINT backBufferHeight);
@@ -63,7 +80,15 @@ public:/*function*/
 	void RenderMeshObject(void* pMeshObjectHandle, const XMMATRIX& worldMatrix);
 	void DeleteBasicMeshObject(void* pMeshObjectHandle);
 
+	void* CreateSpriteObject();
+	void* CreateSpriteObject(const WCHAR* wchTexFileName, int posX, int posY, int width, int height);
+	void DeleteSpriteObject(void* pSpriteObjectHandle);
+	void RenderSpriteWithTex(void* pSpriteObjectHandle, int posX, int posY, int width, int height, const RECT* pRect, float z, void* pTexHandle);
+	void RenderSprite(void* pSpriteObjectHandle, int posX, int posY, int width, int height, float z);
+	void UpdateTextureWithImage(void* pTexHandle, const BYTE* pSrcBits, UINT SrcWidth, UINT SrcHeight);
+
 	void* CreateTiledTexture(UINT texWidth, UINT texHeight, BYTE r, BYTE g, BYTE b);
+	void* CreateDynamicTexture(UINT texWidth, UINT texHeight);
 	void* CreateTextureFromFile(const WCHAR* filePath);
 	void DeleteTexture(void* pTextureHandle);
 
@@ -126,6 +151,7 @@ private:
 
 	std::unique_ptr<CD3D12ResourceManager> m_resourceManager = nullptr;
 	std::unique_ptr<CCpuDescriptorFreeListAllocator> m_descriptorAllocator = nullptr;
+	std::unique_ptr<CTextureManager> m_textureManager = nullptr;
 
 	XMMATRIX m_viewMatrix = {};
 	XMMATRIX m_projectionMatrix = {};

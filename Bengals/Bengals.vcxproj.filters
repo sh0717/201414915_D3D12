@@ -4,13 +4,13 @@
     <Filter Include="Renderer">
       <UniqueIdentifier>{0b1ca0ec-5f2c-4fe1-a7e4-f6c4b8809c8e}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Renderer\BasicMeshObject">
+    <Filter Include="Renderer\RenderObject">
       <UniqueIdentifier>{5586095b-8c28-4ca5-87c0-b38221963850}</UniqueIdentifier>
     </Filter>
     <Filter Include="Renderer\RenderHelper">
       <UniqueIdentifier>{16007695-cdc3-49ab-ab62-197f3d14fbc4}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Renderer\ResourceManager">
+    <Filter Include="Renderer\Manager">
       <UniqueIdentifier>{d52d75f5-cd41-4ad8-970f-69d3ac62a6e9}</UniqueIdentifier>
     </Filter>
     <Filter Include="Renderer\Shaders">
@@ -30,8 +30,8 @@
     <ClInclude Include="Renderer\D3D12Renderer.h">
       <Filter>Renderer</Filter>
     </ClInclude>
-    <ClInclude Include="Renderer\BasicMeshObject\BasicMeshObject.h">
-      <Filter>Renderer\BasicMeshObject</Filter>
+    <ClInclude Include="Renderer\RenderObject\BasicMeshObject.h">
+      <Filter>Renderer\RenderObject</Filter>
     </ClInclude>
     <ClInclude Include="Renderer\RenderHelper\GpuDescriptorLinearAllocator.h">
       <Filter>Renderer\RenderHelper</Filter>
@@ -39,11 +39,20 @@
     <ClInclude Include="Renderer\RenderHelper\ConstantBufferPool.h">
       <Filter>Renderer\RenderHelper</Filter>
     </ClInclude>
+    <ClInclude Include="Renderer\RenderHelper\ConstantBufferManager.h">
+      <Filter>Renderer\RenderHelper</Filter>
+    </ClInclude>
     <ClInclude Include="Renderer\RenderHelper\CpuDescriptorFreeListAllocator.h">
       <Filter>Renderer\RenderHelper</Filter>
     </ClInclude>
-    <ClInclude Include="Renderer\ResourceManager\CD3D12ResourceManager.h">
-      <Filter>Renderer\ResourceManager</Filter>
+    <ClInclude Include="Renderer\Manager\CD3D12ResourceManager.h">
+      <Filter>Renderer\Manager</Filter>
+    </ClInclude>
+    <ClInclude Include="Renderer\Manager\TextureManager.h">
+      <Filter>Renderer\Manager</Filter>
+    </ClInclude>
+    <ClInclude Include="Renderer\RenderObject\SpriteObject.h">
+      <Filter>Renderer\RenderObject</Filter>
     </ClInclude>
     <ClInclude Include="Types\typedef.h">
       <Filter>Types</Filter>
@@ -62,8 +71,8 @@
     <ClCompile Include="Renderer\D3D12Renderer.cpp">
       <Filter>Renderer</Filter>
     </ClCompile>
-    <ClCompile Include="Renderer\BasicMeshObject\BasicMeshObject.cpp">
-      <Filter>Renderer\BasicMeshObject</Filter>
+    <ClCompile Include="Renderer\RenderObject\BasicMeshObject.cpp">
+      <Filter>Renderer\RenderObject</Filter>
     </ClCompile>
     <ClCompile Include="Renderer\RenderHelper\GpuDescriptorLinearAllocator.cpp">
       <Filter>Renderer\RenderHelper</Filter>
@@ -71,11 +80,20 @@
     <ClCompile Include="Renderer\RenderHelper\ConstantBufferPool.cpp">
       <Filter>Renderer\RenderHelper</Filter>
     </ClCompile>
+    <ClCompile Include="Renderer\RenderHelper\ConstantBufferManager.cpp">
+      <Filter>Renderer\RenderHelper</Filter>
+    </ClCompile>
     <ClCompile Include="Renderer\RenderHelper\CpuDescriptorFreeListAllocator.cpp">
       <Filter>Renderer\RenderHelper</Filter>
     </ClCompile>
-    <ClCompile Include="Renderer\ResourceManager\CD3D12ResourceManager.cpp">
-      <Filter>Renderer\ResourceManager</Filter>
+    <ClCompile Include="Renderer\Manager\CD3D12ResourceManager.cpp">
+      <Filter>Renderer\Manager</Filter>
+    </ClCompile>
+    <ClCompile Include="Renderer\Manager\TextureManager.cpp">
+      <Filter>Renderer\Manager</Filter>
+    </ClCompile>
+    <ClCompile Include="Renderer\RenderObject\SpriteObject.cpp">
+      <Filter>Renderer\RenderObject</Filter>
     </ClCompile>
     <ClCompile Include="..\Util\D3DUtil.cpp">
       <Filter>Util</Filter>
@@ -101,6 +119,9 @@
     <Image Include="small.ico" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Renderer\Shaders\SpriteShader.hlsl">
+      <Filter>Renderer\Shaders</Filter>
+    </None>
     <None Include="packages.config" />
   </ItemGroup>
 </Project>
