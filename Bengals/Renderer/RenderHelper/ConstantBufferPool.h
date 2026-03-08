@@ -22,11 +22,6 @@ public:
 
 	bool Initialize(ID3D12Device5* pD3DDevice, UINT sizePerConstantBuffer, UINT maxCbvCount);
 
-	ID3D12DescriptorHeap* GetDescriptorHeap() const
-	{
-		return m_cbvDescriptorHeap.Get();
-	}
-
 	ConstantBufferContainer* Allocate();
 	void Reset();
 

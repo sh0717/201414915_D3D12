@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 /**
  * D3DDevice, command allocator , commandlist , swap chain 등등 초기화시에 잡고
  * 그 이후에는 null check 생략
@@ -15,7 +17,6 @@ class CTextureManager;
 
 struct FrameContext
 {
-
 	ID3D12CommandAllocator* pCommandAllocator = nullptr;
 	ID3D12GraphicsCommandList* pCommandList = nullptr;
 	std::unique_ptr<CFrameGpuDescriptorAllocator> GpuDescriptorAllocator = nullptr;
@@ -134,7 +135,7 @@ private:
 	IDXGISwapChain3* m_pSwapChain = nullptr;
 	UINT m_swapChainFlags = 0;
 
-	ID3D12Resource* m_pRenderTargets[SWAP_CHAIN_FRAME_COUNT] = {};
+	std::array<ID3D12Resource*, SWAP_CHAIN_FRAME_COUNT> m_pRenderTargets = {};
 	ID3D12Resource* m_pDepthStencilBuffer = nullptr;
 
 	ID3D12DescriptorHeap* m_pRtvDescriptorHeap = nullptr;
@@ -144,7 +145,7 @@ private:
 
 	UINT m_currentRenderTargetIndex = 0;
 
-	FrameContext m_frameContexts[MAX_PENDING_FRAME_COUNT] = {};
+	std::array<FrameContext, MAX_PENDING_FRAME_COUNT> m_frameContexts = {};
 	DWORD m_currentContextIndex = 0;
 
 	uint64_t m_fenceValue = 0;
@@ -165,4 +166,6 @@ private:
 	XMMATRIX m_viewMatrix = {};
 	XMMATRIX m_projectionMatrix = {};
 };
+
+
 

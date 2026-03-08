@@ -3,7 +3,7 @@
 #include <array>
 
 #include "ConstantBufferPool.h"
-#include "../../Types/typedef.h"
+#include "Types/typedef.h"
 
 class CConstantBufferManager
 {
@@ -19,4 +19,5 @@ public:
 private:
 	std::array<std::unique_ptr<CConstantBufferPool>, static_cast<UINT>(EConstantBufferType::Count)> m_constantBufferPoolList = {};
 };
+
 

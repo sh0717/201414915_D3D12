@@ -17,7 +17,7 @@
 #include "RenderObject/BasicMeshObject.h"
 #include "RenderObject/SpriteObject.h"
 #include "Manager/TextureManager.h"
-#include "../Types/typedef.h"
+#include "Types/typedef.h"
 
 CD3D12Renderer::CD3D12Renderer(HWND hWindow, bool bEnableDebugLayer, bool bEnableGbv)
 {
@@ -896,6 +896,7 @@ void CD3D12Renderer::CleanupFramebufferDescriptorHeaps()
 		m_pDsvDescriptorHeap = nullptr;
 	}
 }
+
 
 
 

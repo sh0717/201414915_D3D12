@@ -1,7 +1,7 @@
 #include "pch.h"
 #include <d3d12.h>
 #include "TextureManager.h"
-#include "../../Types/typedef.h"
+#include "Types/typedef.h"
 #include "../D3D12Renderer.h"
 #include "CD3D12ResourceManager.h"
 #include "../RenderHelper/PersistentCpuDescriptorAllocator.h"
@@ -235,3 +235,4 @@ void CTextureManager::Cleanup()
 		__debugbreak();
 	}
 }
+

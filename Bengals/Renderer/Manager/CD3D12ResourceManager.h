@@ -1,11 +1,11 @@
 #pragma once
 
 /**
- * GPU 리소스 업로드 전용 관리자
+ * Dedicated manager for GPU resource uploads.
  *
- * 전용 command queue/list/allocator를 소유하여 메인 렌더 큐와 병렬로
- * vertex/index buffer 및 텍스처의 GPU 업로드를 수행합니다.
- * D3DDevice는 CD3D12Renderer로부터 빌려옵니다(비소유).
+ * Owns a dedicated command queue, command list, and command allocator to upload
+ * vertex/index buffers and textures in parallel with the main render queue.
+ * The D3D device is borrowed from CD3D12Renderer and is not owned by this class.
  */
 
 class CD3D12ResourceManager
@@ -38,4 +38,5 @@ private:
 	ComPtr<ID3D12Fence> m_fence = nullptr;
 	UINT64 m_fenceValue = 0;
 };
+
 

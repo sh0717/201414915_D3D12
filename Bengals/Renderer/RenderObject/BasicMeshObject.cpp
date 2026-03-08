@@ -5,7 +5,7 @@
 #include <d3dcompiler.h>
 #include <d3dx12.h>
 #include <span>
-#include "../../Types/typedef.h"
+#include "Types/typedef.h"
 #include "../../../Util/D3DUtil.h"
 #include "../RenderHelper/FrameGpuDescriptorAllocator.h"
 #include "../RenderHelper/ConstantBufferPool.h"
@@ -359,3 +359,4 @@ void CBasicMeshObject::CleanTriGroups()
 	m_triGroupCount = 0;
 	m_maxTriGroupCount = 0;
 }
+
