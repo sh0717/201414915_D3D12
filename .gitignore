@@ -46,3 +46,9 @@ d3d12book-master/
 
 # Local docs folder
 Docs/
+
+
+# Local AI/workflow files
+AGENTS.md
+CLAUDE.md
+temp_*.py
