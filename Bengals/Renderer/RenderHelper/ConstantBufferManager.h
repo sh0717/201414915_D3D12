@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "ConstantBufferPool.h"
 #include "../../Types/typedef.h"
 
@@ -15,5 +17,6 @@ public:
 	CConstantBufferPool* GetConstantBufferPool(EConstantBufferType type) const;
 
 private:
-	std::unique_ptr<CConstantBufferPool> m_constantBufferPoolList[static_cast<UINT>(EConstantBufferType::Count)] = {};
+	std::array<std::unique_ptr<CConstantBufferPool>, static_cast<UINT>(EConstantBufferType::Count)> m_constantBufferPoolList = {};
 };
+

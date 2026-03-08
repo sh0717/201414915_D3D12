@@ -5,7 +5,7 @@
 
 class CD3D12Renderer;
 class CD3D12ResourceManager;
-class CCpuDescriptorFreeListAllocator;
+class CPersistentCpuDescriptorAllocator;
 struct TextureHandle;
 
 class CTextureManager
@@ -33,7 +33,7 @@ private:
 	CD3D12Renderer* m_pRenderer = nullptr;
 	ID3D12Device5* m_pD3DDevice = nullptr;
 	CD3D12ResourceManager* m_pResourceManager = nullptr;
-	CCpuDescriptorFreeListAllocator* m_pDescriptorAllocator = nullptr;
+	CPersistentCpuDescriptorAllocator* m_pPersistentCpuDescriptorAllocator = nullptr;
 
 	std::unordered_map<std::wstring, TextureHandle*> m_fileTextureMap;
 };

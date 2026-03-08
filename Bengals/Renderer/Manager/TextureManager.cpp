@@ -4,7 +4,7 @@
 #include "../../Types/typedef.h"
 #include "../D3D12Renderer.h"
 #include "CD3D12ResourceManager.h"
-#include "../RenderHelper/CpuDescriptorFreeListAllocator.h"
+#include "../RenderHelper/PersistentCpuDescriptorAllocator.h"
 
 CTextureManager::~CTextureManager()
 {
@@ -16,7 +16,7 @@ bool CTextureManager::Initialize(CD3D12Renderer* pRenderer)
 	m_pRenderer = pRenderer;
 	m_pD3DDevice = pRenderer->GetD3DDevice();
 	m_pResourceManager = pRenderer->GetResourceManager();
-	m_pDescriptorAllocator = pRenderer->GetDescriptorAllocator();
+	m_pPersistentCpuDescriptorAllocator = pRenderer->GetPersistentCpuDescriptorAllocator();
 
 	return true;
 }
@@ -196,7 +196,7 @@ DWORD CTextureManager::FreeTextureHandle(TextureHandle* pTexHandle)
 
 		if (pTexHandle->SrvDescriptorHandle.ptr)
 		{
-			m_pDescriptorAllocator->Free(pTexHandle->SrvDescriptorHandle);
+			m_pPersistentCpuDescriptorAllocator->Free(pTexHandle->SrvDescriptorHandle);
 		}
 
 		delete pTexHandle;
@@ -209,7 +209,7 @@ bool CTextureManager::CreateSrvForTexture(TextureHandle* pTexHandle, ID3D12Resou
 {
 	D3D12_CPU_DESCRIPTOR_HANDLE srv = {};
 
-	if (!m_pDescriptorAllocator->Allocate(&srv))
+	if (!m_pPersistentCpuDescriptorAllocator->Allocate(&srv))
 	{
 		return false;
 	}

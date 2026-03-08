@@ -36,7 +36,7 @@
     <ClInclude Include="Renderer\RenderObject\BasicMeshObject.h">
       <Filter>Renderer\RenderObject</Filter>
     </ClInclude>
-    <ClInclude Include="Renderer\RenderHelper\GpuDescriptorLinearAllocator.h">
+    <ClInclude Include="Renderer\RenderHelper\FrameGpuDescriptorAllocator.h">
       <Filter>Renderer\RenderHelper</Filter>
     </ClInclude>
     <ClInclude Include="Renderer\RenderHelper\ConstantBufferPool.h">
@@ -45,7 +45,7 @@
     <ClInclude Include="Renderer\RenderHelper\ConstantBufferManager.h">
       <Filter>Renderer\RenderHelper</Filter>
     </ClInclude>
-    <ClInclude Include="Renderer\RenderHelper\CpuDescriptorFreeListAllocator.h">
+    <ClInclude Include="Renderer\RenderHelper\PersistentCpuDescriptorAllocator.h">
       <Filter>Renderer\RenderHelper</Filter>
     </ClInclude>
     <ClInclude Include="Renderer\Manager\CD3D12ResourceManager.h">
@@ -83,7 +83,7 @@
     <ClCompile Include="Renderer\RenderObject\BasicMeshObject.cpp">
       <Filter>Renderer\RenderObject</Filter>
     </ClCompile>
-    <ClCompile Include="Renderer\RenderHelper\GpuDescriptorLinearAllocator.cpp">
+    <ClCompile Include="Renderer\RenderHelper\FrameGpuDescriptorAllocator.cpp">
       <Filter>Renderer\RenderHelper</Filter>
     </ClCompile>
     <ClCompile Include="Renderer\RenderHelper\ConstantBufferPool.cpp">
@@ -92,7 +92,7 @@
     <ClCompile Include="Renderer\RenderHelper\ConstantBufferManager.cpp">
       <Filter>Renderer\RenderHelper</Filter>
     </ClCompile>
-    <ClCompile Include="Renderer\RenderHelper\CpuDescriptorFreeListAllocator.cpp">
+    <ClCompile Include="Renderer\RenderHelper\PersistentCpuDescriptorAllocator.cpp">
       <Filter>Renderer\RenderHelper</Filter>
     </ClCompile>
     <ClCompile Include="Renderer\Manager\CD3D12ResourceManager.cpp">

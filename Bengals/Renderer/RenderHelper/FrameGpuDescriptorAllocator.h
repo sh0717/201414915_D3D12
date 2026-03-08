@@ -1,16 +1,16 @@
 #pragma once
 
 /**
- * GPU-visible CBV/SRV/UAV descriptor heap의 프레임 단위 선형 할당기
+ * Per-frame linear allocator for a GPU-visible CBV/SRV/UAV descriptor heap.
  *
- * draw call마다 연속된 descriptor table을 bump 방식으로 할당하고,
- * 매 프레임 Reset()으로 오프셋을 0으로 되돌려 heap 전체를 재사용합니다.
+ * It allocates contiguous descriptor table ranges with a bump-pointer scheme
+ * and reuses the entire heap by resetting the allocation offset every frame.
  */
-class CGpuDescriptorLinearAllocator
+class CFrameGpuDescriptorAllocator
 {
 public:
-	CGpuDescriptorLinearAllocator() = default;
-	~CGpuDescriptorLinearAllocator() = default;
+	CFrameGpuDescriptorAllocator() = default;
+	~CFrameGpuDescriptorAllocator() = default;
 
 	bool Initialize(ID3D12Device5* pD3DDevice, UINT maxDescriptorCount);
 

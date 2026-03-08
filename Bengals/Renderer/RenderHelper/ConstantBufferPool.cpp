@@ -47,7 +47,7 @@ bool CConstantBufferPool::Initialize(ID3D12Device5* pD3DDevice, UINT sizePerCons
 
 	UINT8* pSystemMemPtr = m_pSystemAddressForStart;
 	CD3DX12_CPU_DESCRIPTOR_HANDLE descriptorHandle(m_cbvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
-
+	
 	const UINT descriptorSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	for (DWORD i = 0; i < m_maxCbvCount; i++)
 	{

@@ -37,11 +37,11 @@ bool CConstantBufferManager::Initialize(ID3D12Device5* pD3DDevice, UINT maxCbvCo
 
 void CConstantBufferManager::Reset()
 {
-	for (UINT i = 0; i < static_cast<UINT>(EConstantBufferType::Count); i++)
+	for (std::unique_ptr<CConstantBufferPool>& constantBufferPool : m_constantBufferPoolList)
 	{
-		if (m_constantBufferPoolList[i])
+		if (constantBufferPool)
 		{
-			m_constantBufferPoolList[i]->Reset();
+			constantBufferPool->Reset();
 		}
 	}
 }
@@ -57,3 +57,4 @@ CConstantBufferPool* CConstantBufferManager::GetConstantBufferPool(EConstantBuff
 
 	return m_constantBufferPoolList[poolIndex].get();
 }
+

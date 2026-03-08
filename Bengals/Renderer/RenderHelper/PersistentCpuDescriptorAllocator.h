@@ -7,11 +7,11 @@
  * CIndexCreator 기반 인덱스 재사용으로 개별 descriptor를 Allocate/Free하며,
  * 텍스처 등 리소스 수명과 동일하게 유지되는 영구 descriptor를 관리합니다.
  */
-class CCpuDescriptorFreeListAllocator
+class CPersistentCpuDescriptorAllocator
 {
 public:
-	CCpuDescriptorFreeListAllocator() = default;
-	~CCpuDescriptorFreeListAllocator() = default;
+	CPersistentCpuDescriptorAllocator() = default;
+	~CPersistentCpuDescriptorAllocator() = default;
 
 	bool Initialize(ID3D12Device* pD3DDevice, const UINT maxDescriptorCount);
 

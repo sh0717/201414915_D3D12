@@ -1,7 +1,7 @@
 #include "pch.h"
-#include "GpuDescriptorLinearAllocator.h"
+#include "FrameGpuDescriptorAllocator.h"
 
-bool CGpuDescriptorLinearAllocator::Initialize(ID3D12Device5* pD3DDevice, UINT maxDescriptorCount)
+bool CFrameGpuDescriptorAllocator::Initialize(ID3D12Device5* pD3DDevice, UINT maxDescriptorCount)
 {
 	if (pD3DDevice == nullptr)
 	{
@@ -30,7 +30,7 @@ bool CGpuDescriptorLinearAllocator::Initialize(ID3D12Device5* pD3DDevice, UINT m
 	return true;
 }
 
-bool CGpuDescriptorLinearAllocator::Allocate(D3D12_CPU_DESCRIPTOR_HANDLE* pOutCpuDescriptorHandle, D3D12_GPU_DESCRIPTOR_HANDLE* pOutGpuDescriptorHandle, const UINT descriptorCount)
+bool CFrameGpuDescriptorAllocator::Allocate(D3D12_CPU_DESCRIPTOR_HANDLE* pOutCpuDescriptorHandle, D3D12_GPU_DESCRIPTOR_HANDLE* pOutGpuDescriptorHandle, const UINT descriptorCount)
 {
 	if ((m_allocatedDescriptorCount + descriptorCount) > m_maxDescriptorCount)
 	{
@@ -45,7 +45,7 @@ bool CGpuDescriptorLinearAllocator::Allocate(D3D12_CPU_DESCRIPTOR_HANDLE* pOutCp
 	return true;
 }
 
-void CGpuDescriptorLinearAllocator::Reset()
+void CFrameGpuDescriptorAllocator::Reset()
 {
 	m_allocatedDescriptorCount = 0;
 }

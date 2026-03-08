@@ -2,9 +2,9 @@
 
 struct ConstantBufferContainer
 {
-	D3D12_CPU_DESCRIPTOR_HANDLE CbvDescriptorHandle;
-	D3D12_GPU_VIRTUAL_ADDRESS GpuAddress;
-	UINT8* SystemAddress;
+	D3D12_CPU_DESCRIPTOR_HANDLE CbvDescriptorHandle = {};
+	D3D12_GPU_VIRTUAL_ADDRESS GpuAddress = {};
+	UINT8* SystemAddress = {};
 };
 
 /**

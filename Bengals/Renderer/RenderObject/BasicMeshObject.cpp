@@ -1,11 +1,13 @@
 #include "pch.h"
 #include "BasicMeshObject.h"
 #include "../D3D12Renderer.h"
+#include <cassert>
 #include <d3dcompiler.h>
 #include <d3dx12.h>
+#include <span>
 #include "../../Types/typedef.h"
 #include "../../../Util/D3DUtil.h"
-#include "../RenderHelper/GpuDescriptorLinearAllocator.h"
+#include "../RenderHelper/FrameGpuDescriptorAllocator.h"
 #include "../RenderHelper/ConstantBufferPool.h"
 #include "../Manager/CD3D12ResourceManager.h"
 
@@ -229,10 +231,10 @@ void CBasicMeshObject::Draw(ID3D12GraphicsCommandList* pCommandList, const XMMAT
 
 	ID3D12Device5* pD3DDevice = m_pRenderer->GetD3DDevice();
 	CConstantBufferPool* pConstantBufferPool = m_pRenderer->GetConstantBufferPool(EConstantBufferType::Default);
-	CGpuDescriptorLinearAllocator* pDescriptorAllocator = m_pRenderer->GetDescriptorPool();
+	CFrameGpuDescriptorAllocator* pFrameGpuDescriptorAllocator = m_pRenderer->GetFrameGpuDescriptorAllocator();
 
-	ID3D12DescriptorHeap* pDescriptorHeap = pDescriptorAllocator->GetDescriptorHeap();
-	const UINT descriptorSize = pDescriptorAllocator->GetDescriptorSizeCbvSrvUav();
+	ID3D12DescriptorHeap* pDescriptorHeap = pFrameGpuDescriptorAllocator->GetDescriptorHeap();
+	const UINT descriptorSize = pFrameGpuDescriptorAllocator->GetDescriptorSizeCbvSrvUav();
 
 	// 1. descriptor table: CBV 1 + SRV N
 	UINT requiredDescriptorCount = DescriptorCountPerObj + (m_triGroupCount * DescriptorCountPerTriGroup);
@@ -240,7 +242,7 @@ void CBasicMeshObject::Draw(ID3D12GraphicsCommandList* pCommandList, const XMMAT
 	CD3DX12_CPU_DESCRIPTOR_HANDLE cpuBaseDescriptorHandle = {};
 	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuBaseDescriptorHandle = {};
 
-	if (!pDescriptorAllocator->Allocate(&cpuBaseDescriptorHandle, &gpuBaseDescriptorHandle, requiredDescriptorCount))
+	if (!pFrameGpuDescriptorAllocator->Allocate(&cpuBaseDescriptorHandle, &gpuBaseDescriptorHandle, requiredDescriptorCount))
 	{
 		__debugbreak();
 		return;
@@ -329,19 +331,31 @@ void CBasicMeshObject::CleanSharedResource()
 
 void CBasicMeshObject::CleanTriGroups()
 {
-	if (m_triGroupList)
+	if (!m_triGroupList)
 	{
-		for (UINT i = 0; i < m_triGroupCount; i++)
-		{
-			IndexedTriGroup& triGroup = m_triGroupList[i];
-			if (triGroup.pTexHandle)
-			{
-				m_pRenderer->DeleteTexture(triGroup.pTexHandle);
-				triGroup.pTexHandle = nullptr;
-			}
-		}
-		m_triGroupList.reset();
 		m_triGroupCount = 0;
 		m_maxTriGroupCount = 0;
+		return;
 	}
+
+	assert(m_pRenderer != nullptr);
+	if (!m_pRenderer)
+	{
+		return;
+	}
+
+	for (IndexedTriGroup& triGroup : std::span{ m_triGroupList.get(), static_cast<size_t>(m_triGroupCount) })
+	{
+		if (!triGroup.pTexHandle)
+		{
+			continue;
+		}
+
+		m_pRenderer->DeleteTexture(triGroup.pTexHandle);
+		triGroup.pTexHandle = nullptr;
+	}
+
+	m_triGroupList.reset();
+	m_triGroupCount = 0;
+	m_maxTriGroupCount = 0;
 }

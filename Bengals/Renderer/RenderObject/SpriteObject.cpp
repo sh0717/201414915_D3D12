@@ -5,7 +5,7 @@
 #include <d3dx12.h>
 #include "../../Types/typedef.h"
 #include "../../../Util/D3DUtil.h"
-#include "../RenderHelper/GpuDescriptorLinearAllocator.h"
+#include "../RenderHelper/FrameGpuDescriptorAllocator.h"
 #include "../RenderHelper/ConstantBufferPool.h"
 #include "../Manager/CD3D12ResourceManager.h"
 
@@ -284,9 +284,9 @@ void CSpriteObject::DrawWithTex(ID3D12GraphicsCommandList* pCommandList, XMFLOAT
 		return;
 	}
 
-	CGpuDescriptorLinearAllocator* pDescriptorAllocator = m_pRenderer->GetDescriptorPool();
+	CFrameGpuDescriptorAllocator* pFrameGpuDescriptorAllocator = m_pRenderer->GetFrameGpuDescriptorAllocator();
 	CConstantBufferPool* pConstantBufferPool = m_pRenderer->GetConstantBufferPool(EConstantBufferType::Sprite);
-	if (!pDescriptorAllocator || !pConstantBufferPool)
+	if (!pFrameGpuDescriptorAllocator || !pConstantBufferPool)
 	{
 		return;
 	}
@@ -300,7 +300,7 @@ void CSpriteObject::DrawWithTex(ID3D12GraphicsCommandList* pCommandList, XMFLOAT
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE cpuBaseDescriptorHandle = {};
 	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuBaseDescriptorHandle = {};
-	if (!pDescriptorAllocator->Allocate(&cpuBaseDescriptorHandle, &gpuBaseDescriptorHandle, DescriptorCountForDraw))
+	if (!pFrameGpuDescriptorAllocator->Allocate(&cpuBaseDescriptorHandle, &gpuBaseDescriptorHandle, DescriptorCountForDraw))
 	{
 		__debugbreak();
 		return;
@@ -364,8 +364,8 @@ void CSpriteObject::DrawWithTex(ID3D12GraphicsCommandList* pCommandList, XMFLOAT
 	pConstantBufferSprite->Reserved1 = 0.0f;
 
 	ID3D12Device5* pD3DDevice = m_pRenderer->GetD3DDevice();
-	ID3D12DescriptorHeap* pDescriptorHeap = pDescriptorAllocator->GetDescriptorHeap();
-	const UINT descriptorSize = pDescriptorAllocator->GetDescriptorSizeCbvSrvUav();
+	ID3D12DescriptorHeap* pDescriptorHeap = pFrameGpuDescriptorAllocator->GetDescriptorHeap();
+	const UINT descriptorSize = pFrameGpuDescriptorAllocator->GetDescriptorSizeCbvSrvUav();
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE destHandle(cpuBaseDescriptorHandle, SpriteDescriptorIndexCbv, descriptorSize);
 	pD3DDevice->CopyDescriptorsSimple(1, destHandle, pCB->CbvDescriptorHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);

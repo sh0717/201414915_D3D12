@@ -11,8 +11,8 @@
 #include "Manager/CD3D12ResourceManager.h"
 #include "RenderHelper/ConstantBufferPool.h"
 #include "RenderHelper/ConstantBufferManager.h"
-#include "RenderHelper/GpuDescriptorLinearAllocator.h"
-#include "RenderHelper/CpuDescriptorFreeListAllocator.h"
+#include "RenderHelper/FrameGpuDescriptorAllocator.h"
+#include "RenderHelper/PersistentCpuDescriptorAllocator.h"
 
 #include "RenderObject/BasicMeshObject.h"
 #include "RenderObject/SpriteObject.h"
@@ -52,7 +52,7 @@ void CD3D12Renderer::BeginRender()
 	CD3DX12_RESOURCE_BARRIER RenderTargetBarrier = CD3DX12_RESOURCE_BARRIER::Transition(m_pRenderTargets[m_currentRenderTargetIndex], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
 	ctx.pCommandList->ResourceBarrier(1, &RenderTargetBarrier);
 
-	const float BackColor[] = { 1.0f, 0.0f, 1.0f, 1.0f };
+	const float BackColor[] = { 1.0f, 0.9f, 1.0f, 1.0f };
 	D3D12_CPU_DESCRIPTOR_HANDLE DsvDescriptorHandle{ m_pDsvDescriptorHeap->GetCPUDescriptorHandleForHeapStart()};
 
 	ctx.pCommandList->ClearRenderTargetView(RTVDescriptorHandle, BackColor, 0, nullptr);
@@ -105,7 +105,7 @@ void CD3D12Renderer::Present()
 
 	// 다음 컨텍스트의 풀 리셋
 	nextCtx.ConstantBufferManager->Reset();
-	nextCtx.DescriptorPool->Reset();
+	nextCtx.GpuDescriptorAllocator->Reset();
 
 	// 컨텍스트 전환
 	m_currentContextIndex = nextContextIndex;
@@ -137,17 +137,7 @@ bool CD3D12Renderer::UpdateWindowSize(UINT backBufferWidth, UINT backBufferHeigh
 	if (FAILED(hr))
 		__debugbreak();
 
-	for (UINT n = 0; n < SWAP_CHAIN_FRAME_COUNT; n++)
-	{
-		m_pRenderTargets[n]->Release();
-		m_pRenderTargets[n] = nullptr;
-	}
-
-	if (m_pDepthStencilBuffer)
-	{
-		m_pDepthStencilBuffer->Release();
-		m_pDepthStencilBuffer = nullptr;
-	}
+	CleanupFramebufferResources();
 
 	if (FAILED(m_pSwapChain->ResizeBuffers(SWAP_CHAIN_FRAME_COUNT, backBufferWidth, backBufferHeight, DXGI_FORMAT_R8G8B8A8_UNORM, m_swapChainFlags)))
 	{
@@ -155,17 +145,11 @@ bool CD3D12Renderer::UpdateWindowSize(UINT backBufferWidth, UINT backBufferHeigh
 	}
 	m_currentRenderTargetIndex = m_pSwapChain->GetCurrentBackBufferIndex();
 
-	// Create frame resources.
-	CD3DX12_CPU_DESCRIPTOR_HANDLE RTVHandle(m_pRtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
-
-	// Create a RTV for each frame.
-	for (UINT Index = 0; Index < SWAP_CHAIN_FRAME_COUNT; ++Index)
+	if (!InitializeFramebufferResources(backBufferWidth, backBufferHeight))
 	{
-		m_pSwapChain->GetBuffer(Index, IID_PPV_ARGS(&m_pRenderTargets[Index]));
-		m_pD3DDevice->CreateRenderTargetView(m_pRenderTargets[Index], nullptr, RTVHandle);
-		RTVHandle.Offset(1, m_rtvDescriptorSize);
+		__debugbreak();
+		return false;
 	}
-	CreateDepthStencil(backBufferWidth, backBufferHeight);
 
 	m_viewportWidth = backBufferWidth;
 	m_viewportHeight = backBufferHeight;
@@ -174,8 +158,8 @@ bool CD3D12Renderer::UpdateWindowSize(UINT backBufferWidth, UINT backBufferHeigh
 
 	m_scissorRect.left = 0;
 	m_scissorRect.top = 0;
-	m_scissorRect.right = m_viewportWidth;
-	m_scissorRect.bottom = m_viewportHeight;
+	m_scissorRect.right = static_cast<LONG>(m_viewportWidth);
+	m_scissorRect.bottom = static_cast<LONG>(m_viewportHeight);
 
 	InitializeCamera();
 
@@ -529,48 +513,37 @@ bool CD3D12Renderer::Initialize(HWND hWindow, bool bEnableDebugLayer, bool bEnab
 	m_viewport.MinDepth = 0.f;
 
 	m_scissorRect.left = 0;
-	m_scissorRect.right = wndWidth;
+	m_scissorRect.right = static_cast<LONG>(wndWidth);
 	m_scissorRect.top = 0;
-	m_scissorRect.bottom = wndHeight;
+	m_scissorRect.bottom = static_cast<LONG>(wndHeight);
 
 	m_viewportWidth = wndWidth;
 	m_viewportHeight = wndHeight;
 	// ~set viewport and scissor rect
 
-	CreateRTVAndDSVDescriptorHeap();
-
-	//create RTV descriptor
-	CD3DX12_CPU_DESCRIPTOR_HANDLE RTVDescriptorHandle{ m_pRtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart() };
-	for (UINT n = 0; n < SWAP_CHAIN_FRAME_COUNT; n++)
+	if (!InitializeFramebufferResources(wndWidth, wndHeight))
 	{
-		m_pSwapChain->GetBuffer(n, IID_PPV_ARGS(&m_pRenderTargets[n]));
-		m_pD3DDevice->CreateRenderTargetView(m_pRenderTargets[n], nullptr, RTVDescriptorHandle);
-		RTVDescriptorHandle.Offset(1, m_rtvDescriptorSize);
+		__debugbreak();
+		return false;
 	}
-
-	CreateDepthStencil(wndWidth, wndHeight);
-	CreateCommandAllocatorAndCommandList();
+	if (!InitializeFrameContexts())
+	{
+		__debugbreak();
+		return false;
+	}
 	CreateFence();
 
 	InitializeCamera();
 
+	m_persistentCpuDescriptorAllocator = std::make_unique<CPersistentCpuDescriptorAllocator>();
+	m_persistentCpuDescriptorAllocator->Initialize(m_pD3DDevice, MAX_DESCRIPTOR_COUNT);
+
 	m_resourceManager = std::make_unique<CD3D12ResourceManager>();
-	m_resourceManager->Initialize(m_pD3DDevice);
-
-	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
+	if (m_resourceManager->Initialize(m_pD3DDevice) == false)
 	{
-		FrameContext& ctx = m_frameContexts[i];
-
-		ctx.DescriptorPool = std::make_unique<CGpuDescriptorLinearAllocator>();
-		ctx.DescriptorPool->Initialize(m_pD3DDevice, MAX_DRAW_COUNT_PER_FRAME * CBasicMeshObject::MaxDescriptorCountForDraw);
-
-		ctx.ConstantBufferManager = std::make_unique<CConstantBufferManager>();
-		ctx.ConstantBufferManager->Initialize(m_pD3DDevice, MAX_DRAW_COUNT_PER_FRAME);
+		__debugbreak();
+		return false;
 	}
-
-	m_descriptorAllocator = std::make_unique<CCpuDescriptorFreeListAllocator>();
-	m_descriptorAllocator->Initialize(m_pD3DDevice, MAX_DESCRIPTOR_COUNT);
-
 	m_textureManager = std::make_unique<CTextureManager>();
 	m_textureManager->Initialize(this);
 
@@ -605,73 +578,149 @@ void CD3D12Renderer::CreateFence()
 	m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 }
 
-bool CD3D12Renderer::CreateCommandAllocatorAndCommandList()
+bool CD3D12Renderer::InitializeFrameContexts()
 {
-	assert(m_pD3DDevice != nullptr && "CD3D12Renderer::CreateCommandAllocatorAndCommandList, m_pD3DDevice is not valid");
+	assert(m_pD3DDevice != nullptr && "CD3D12Renderer::InitializeFrameContexts, m_pD3DDevice is not valid");
 
-	bool bResult = false;
-
-	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
+	for (FrameContext& ctx : m_frameContexts)
 	{
-		FrameContext& ctx = m_frameContexts[i];
-
 		if (FAILED(m_pD3DDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&ctx.pCommandAllocator))))
 		{
 			__debugbreak();
+			return false;
 		}
 
 		if (FAILED(m_pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, ctx.pCommandAllocator, nullptr, IID_PPV_ARGS(&ctx.pCommandList))))
 		{
 			__debugbreak();
+			return false;
 		}
 
-		// Command lists are created in the recording state, but there is nothing
-		// to record yet. The main loop expects it to be closed, so close it now.
 		ctx.pCommandList->Close();
+
+		ctx.GpuDescriptorAllocator = std::make_unique<CFrameGpuDescriptorAllocator>();
+		if (!ctx.GpuDescriptorAllocator->Initialize(m_pD3DDevice, MAX_DRAW_COUNT_PER_FRAME * CBasicMeshObject::MaxDescriptorCountForDraw))
+		{
+			__debugbreak();
+			return false;
+		}
+
+		ctx.ConstantBufferManager = std::make_unique<CConstantBufferManager>();
+		if (!ctx.ConstantBufferManager->Initialize(m_pD3DDevice, MAX_DRAW_COUNT_PER_FRAME))
+		{
+			__debugbreak();
+			return false;
+		}
 	}
 
-	bResult = true;
-
-	return bResult;
+	return true;
 }
 
-void CD3D12Renderer::CreateRTVAndDSVDescriptorHeap()
+bool CD3D12Renderer::InitializeFramebufferResources(UINT width, UINT height)
 {
-	D3D12_DESCRIPTOR_HEAP_DESC RTVDescriptorHeapDesc = {};
-	RTVDescriptorHeapDesc.NumDescriptors = SWAP_CHAIN_FRAME_COUNT;
-	RTVDescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-	RTVDescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	if (FAILED(m_pD3DDevice->CreateDescriptorHeap(&RTVDescriptorHeapDesc, IID_PPV_ARGS(&m_pRtvDescriptorHeap))))
+	assert(m_pD3DDevice != nullptr && m_pSwapChain != nullptr);
+	if (!m_pD3DDevice || !m_pSwapChain)
+	{
+		return false;
+	}
+
+	if (!m_pRtvDescriptorHeap || !m_pDsvDescriptorHeap)
+	{
+		if (!CreateFramebufferDescriptorHeaps())
+		{
+			__debugbreak();
+			return false;
+		}
+	}
+
+	if (!CreateRenderTargetViews())
 	{
 		__debugbreak();
+		return false;
+	}
+
+	if (!CreateDepthStencilBufferAndView(width, height))
+	{
+		__debugbreak();
+		return false;
+	}
+
+	return true;
+}
+
+bool CD3D12Renderer::CreateFramebufferDescriptorHeaps()
+{
+	assert(m_pD3DDevice != nullptr);
+	if (!m_pD3DDevice)
+	{
+		return false;
+	}
+
+	D3D12_DESCRIPTOR_HEAP_DESC rtvDescriptorHeapDesc = {};
+	rtvDescriptorHeapDesc.NumDescriptors = SWAP_CHAIN_FRAME_COUNT;
+	rtvDescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	rtvDescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	if (FAILED(m_pD3DDevice->CreateDescriptorHeap(&rtvDescriptorHeapDesc, IID_PPV_ARGS(&m_pRtvDescriptorHeap))))
+	{
+		__debugbreak();
+		return false;
 	}
 
 	m_rtvDescriptorSize = m_pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
-	D3D12_DESCRIPTOR_HEAP_DESC DSVDescriptorHeapDesc = {};
-	DSVDescriptorHeapDesc.NumDescriptors = 1;	// Default Depth Buffer
-	DSVDescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-	DSVDescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	if (FAILED(m_pD3DDevice->CreateDescriptorHeap(&DSVDescriptorHeapDesc, IID_PPV_ARGS(&m_pDsvDescriptorHeap))))
+	D3D12_DESCRIPTOR_HEAP_DESC dsvDescriptorHeapDesc = {};
+	dsvDescriptorHeapDesc.NumDescriptors = 1;
+	dsvDescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+	dsvDescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	if (FAILED(m_pD3DDevice->CreateDescriptorHeap(&dsvDescriptorHeapDesc, IID_PPV_ARGS(&m_pDsvDescriptorHeap))))
 	{
 		__debugbreak();
+		return false;
 	}
 
 	m_dsvDescriptorSize = m_pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 
-	return;
+	return true;
 }
 
-bool CD3D12Renderer::CreateDepthStencil(UINT width, UINT height)
+bool CD3D12Renderer::CreateRenderTargetViews()
 {
-	bool bResult = false;
+	assert(m_pD3DDevice != nullptr && m_pSwapChain != nullptr && m_pRtvDescriptorHeap != nullptr);
+	if (!m_pD3DDevice || !m_pSwapChain || !m_pRtvDescriptorHeap)
+	{
+		return false;
+	}
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvDescriptorHandle(m_pRtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+	for (UINT n = 0; n < SWAP_CHAIN_FRAME_COUNT; n++)
+	{
+		if (FAILED(m_pSwapChain->GetBuffer(n, IID_PPV_ARGS(&m_pRenderTargets[n]))))
+		{
+			__debugbreak();
+			return false;
+		}
+
+		m_pD3DDevice->CreateRenderTargetView(m_pRenderTargets[n], nullptr, rtvDescriptorHandle);
+		rtvDescriptorHandle.Offset(1, m_rtvDescriptorSize);
+	}
+
+	return true;
+}
+
+bool CD3D12Renderer::CreateDepthStencilBufferAndView(UINT width, UINT height)
+{
+	assert(m_pD3DDevice != nullptr && m_pDsvDescriptorHeap != nullptr);
+	if (!m_pD3DDevice || !m_pDsvDescriptorHeap)
+	{
+		return false;
+	}
 
 	D3D12_CLEAR_VALUE depthOptimizedClearValue = {};
 	depthOptimizedClearValue.Format = DXGI_FORMAT_D32_FLOAT;
 	depthOptimizedClearValue.DepthStencil.Depth = 1.0f;
 	depthOptimizedClearValue.DepthStencil.Stencil = 0;
 
-	CD3DX12_RESOURCE_DESC DepthDesc(
+	CD3DX12_RESOURCE_DESC depthDesc(
 		D3D12_RESOURCE_DIMENSION_TEXTURE2D,
 		0,
 		width,
@@ -684,31 +733,30 @@ bool CD3D12Renderer::CreateDepthStencil(UINT width, UINT height)
 		D3D12_TEXTURE_LAYOUT_UNKNOWN,
 		D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
 
-
-
 	if (FAILED(m_pD3DDevice->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES{ D3D12_HEAP_TYPE_DEFAULT },
 		D3D12_HEAP_FLAG_NONE,
-		&DepthDesc,
+		&depthDesc,
 		D3D12_RESOURCE_STATE_DEPTH_WRITE,
 		&depthOptimizedClearValue,
 		IID_PPV_ARGS(&m_pDepthStencilBuffer)
 	)))
 	{
 		__debugbreak();
+		return false;
 	}
 
 	m_pDepthStencilBuffer->SetName(L"CD3D12Renderer::DepthStencilBuffer");
 
-	D3D12_DEPTH_STENCIL_VIEW_DESC DepthStencilViewDesc = {};
-	DepthStencilViewDesc.Format = DXGI_FORMAT_D32_FLOAT;
-	DepthStencilViewDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-	DepthStencilViewDesc.Flags = D3D12_DSV_FLAG_NONE;
+	D3D12_DEPTH_STENCIL_VIEW_DESC depthStencilViewDesc = {};
+	depthStencilViewDesc.Format = DXGI_FORMAT_D32_FLOAT;
+	depthStencilViewDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+	depthStencilViewDesc.Flags = D3D12_DSV_FLAG_NONE;
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE	DSVDescriptorHandle(m_pDsvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
-	m_pD3DDevice->CreateDepthStencilView(m_pDepthStencilBuffer, &DepthStencilViewDesc, DSVDescriptorHandle);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE dsvDescriptorHandle(m_pDsvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+	m_pD3DDevice->CreateDepthStencilView(m_pDepthStencilBuffer, &depthStencilViewDesc, dsvDescriptorHandle);
 
-	return bResult;
+	return true;
 }
 
 void CD3D12Renderer::InitializeCamera()
@@ -735,31 +783,13 @@ void CD3D12Renderer::Cleanup()
 		WaitForFenceValue(m_frameContexts[i].LastFenceValue);
 	}
 
-	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
-	{
-		m_frameContexts[i].DescriptorPool = nullptr;
-		m_frameContexts[i].ConstantBufferManager = nullptr;
-	}
 
 	m_textureManager = nullptr;
 	m_resourceManager = nullptr;
-	m_descriptorAllocator = nullptr;
+	m_persistentCpuDescriptorAllocator = nullptr;
 
-	CleanupDescriptorHeap();
-	for (DWORD i = 0; i < SWAP_CHAIN_FRAME_COUNT; i++)
-	{
-		if (m_pRenderTargets[i])
-		{
-			m_pRenderTargets[i]->Release();
-			m_pRenderTargets[i] = nullptr;
-		}
-	}
-
-	if (m_pDepthStencilBuffer)
-	{
-		m_pDepthStencilBuffer->Release();
-		m_pDepthStencilBuffer = nullptr;
-	}
+	CleanupFramebufferResources();
+	CleanupFramebufferDescriptorHeaps();
 
 	if (m_pSwapChain)
 	{
@@ -773,7 +803,7 @@ void CD3D12Renderer::Cleanup()
 		m_pCommandQueue = nullptr;
 	}
 
-	CleanupCommandAllocatorAndCommandList();
+	CleanupFrameContexts();
 	CleanupFence();
 
 	if (m_pD3DDevice)
@@ -812,16 +842,20 @@ void CD3D12Renderer::CleanupFence()
 	m_fenceValue = 0;
 }
 
-void CD3D12Renderer::CleanupCommandAllocatorAndCommandList()
+void CD3D12Renderer::CleanupFrameContexts()
 {
-	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
+	for (FrameContext& ctx : m_frameContexts)
 	{
-		FrameContext& ctx = m_frameContexts[i];
+		ctx.GpuDescriptorAllocator = nullptr;
+		ctx.ConstantBufferManager = nullptr;
+		ctx.LastFenceValue = 0;
+
 		if (ctx.pCommandList)
 		{
 			ctx.pCommandList->Release();
 			ctx.pCommandList = nullptr;
 		}
+
 		if (ctx.pCommandAllocator)
 		{
 			ctx.pCommandAllocator->Release();
@@ -830,7 +864,25 @@ void CD3D12Renderer::CleanupCommandAllocatorAndCommandList()
 	}
 }
 
-void CD3D12Renderer::CleanupDescriptorHeap()
+void CD3D12Renderer::CleanupFramebufferResources()
+{
+	for (ID3D12Resource*& pRenderTarget : m_pRenderTargets)
+	{
+		if (pRenderTarget)
+		{
+			pRenderTarget->Release();
+			pRenderTarget = nullptr;
+		}
+	}
+
+	if (m_pDepthStencilBuffer)
+	{
+		m_pDepthStencilBuffer->Release();
+		m_pDepthStencilBuffer = nullptr;
+	}
+}
+
+void CD3D12Renderer::CleanupFramebufferDescriptorHeaps()
 {
 	if (m_pRtvDescriptorHeap)
 	{
@@ -844,3 +896,6 @@ void CD3D12Renderer::CleanupDescriptorHeap()
 		m_pDsvDescriptorHeap = nullptr;
 	}
 }
+
+
+

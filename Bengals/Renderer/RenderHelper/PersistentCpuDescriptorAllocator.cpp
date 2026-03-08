@@ -1,7 +1,7 @@
 #include "pch.h"
-#include "CpuDescriptorFreeListAllocator.h"
+#include "PersistentCpuDescriptorAllocator.h"
 
-bool CCpuDescriptorFreeListAllocator::Initialize(ID3D12Device* pD3DDevice, const UINT maxDescriptorCount)
+bool CPersistentCpuDescriptorAllocator::Initialize(ID3D12Device* pD3DDevice, const UINT maxDescriptorCount)
 {
 	if (pD3DDevice == nullptr)
 	{
@@ -26,7 +26,7 @@ bool CCpuDescriptorFreeListAllocator::Initialize(ID3D12Device* pD3DDevice, const
 	return true;
 }
 
-bool CCpuDescriptorFreeListAllocator::Allocate(D3D12_CPU_DESCRIPTOR_HANDLE* pOutCpuDescriptorHandle)
+bool CPersistentCpuDescriptorAllocator::Allocate(D3D12_CPU_DESCRIPTOR_HANDLE* pOutCpuDescriptorHandle)
 {
 	DWORD foundIndex = m_indexCreator.Alloc();
 	if (foundIndex == -1)
@@ -39,7 +39,7 @@ bool CCpuDescriptorFreeListAllocator::Allocate(D3D12_CPU_DESCRIPTOR_HANDLE* pOut
 	return true;
 }
 
-void CCpuDescriptorFreeListAllocator::Free(D3D12_CPU_DESCRIPTOR_HANDLE inCpuDescriptorHandle)
+void CPersistentCpuDescriptorAllocator::Free(D3D12_CPU_DESCRIPTOR_HANDLE inCpuDescriptorHandle)
 {
 	D3D12_CPU_DESCRIPTOR_HANDLE descriptorHandleForHeapStart = m_pDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
 

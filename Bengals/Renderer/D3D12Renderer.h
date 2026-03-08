@@ -6,11 +6,11 @@
  */
 
 class CD3D12ResourceManager;
-class CCpuDescriptorFreeListAllocator;
+class CPersistentCpuDescriptorAllocator;
 class CConstantBufferManager;
 class CTextureManager;
 
-#include "RenderHelper/GpuDescriptorLinearAllocator.h"
+#include "RenderHelper/FrameGpuDescriptorAllocator.h"
 #include "RenderHelper/ConstantBufferManager.h"
 
 struct FrameContext
@@ -18,7 +18,7 @@ struct FrameContext
 
 	ID3D12CommandAllocator* pCommandAllocator = nullptr;
 	ID3D12GraphicsCommandList* pCommandList = nullptr;
-	std::unique_ptr<CGpuDescriptorLinearAllocator> DescriptorPool = nullptr;
+	std::unique_ptr<CFrameGpuDescriptorAllocator> GpuDescriptorAllocator = nullptr;
 	std::unique_ptr<CConstantBufferManager> ConstantBufferManager = nullptr;
 	uint64_t LastFenceValue = 0;
 };
@@ -46,14 +46,14 @@ public:/*function*/
 		return m_resourceManager.get();
 	}
 
-	CGpuDescriptorLinearAllocator* GetDescriptorPool() const
+	CFrameGpuDescriptorAllocator* GetFrameGpuDescriptorAllocator() const
 	{
-		return m_frameContexts[m_currentContextIndex].DescriptorPool.get();
+		return m_frameContexts[m_currentContextIndex].GpuDescriptorAllocator.get();
 	}
 
-	CCpuDescriptorFreeListAllocator* GetDescriptorAllocator() const
+	CPersistentCpuDescriptorAllocator* GetPersistentCpuDescriptorAllocator() const
 	{
-		return m_descriptorAllocator.get();
+		return m_persistentCpuDescriptorAllocator.get();
 	}
 
 	CConstantBufferPool* GetConstantBufferPool(EConstantBufferType type) const
@@ -104,17 +104,20 @@ private:
 	void WaitForFenceValue(uint64_t expectedFenceValue) const;
 
 	void	CreateFence();
-	bool	CreateCommandAllocatorAndCommandList();
+	bool	InitializeFrameContexts();
 
-	void	CreateRTVAndDSVDescriptorHeap();
-	bool	CreateDepthStencil(UINT width, UINT height);
+	bool	InitializeFramebufferResources(UINT width, UINT height);
+	bool	CreateFramebufferDescriptorHeaps();
+	bool	CreateRenderTargetViews();
+	bool	CreateDepthStencilBufferAndView(UINT width, UINT height);
 
 	void	InitializeCamera();
 
 	void	Cleanup();
 	void	CleanupFence();
-	void	CleanupCommandAllocatorAndCommandList();
-	void	CleanupDescriptorHeap();
+	void	CleanupFrameContexts();
+	void	CleanupFramebufferResources();
+	void	CleanupFramebufferDescriptorHeaps();
 
 private:
 
@@ -154,7 +157,7 @@ private:
 	UINT m_viewportHeight = 0;
 
 	std::unique_ptr<CD3D12ResourceManager> m_resourceManager = nullptr;
-	std::unique_ptr<CCpuDescriptorFreeListAllocator> m_descriptorAllocator = nullptr;
+	std::unique_ptr<CPersistentCpuDescriptorAllocator> m_persistentCpuDescriptorAllocator = nullptr;
 	std::unique_ptr<CTextureManager> m_textureManager = nullptr;
 
 	XMVECTOR m_cameraPos = {};
@@ -162,3 +165,4 @@ private:
 	XMMATRIX m_viewMatrix = {};
 	XMMATRIX m_projectionMatrix = {};
 };
+

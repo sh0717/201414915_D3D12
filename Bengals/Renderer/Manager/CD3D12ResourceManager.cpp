@@ -69,14 +69,14 @@ bool CD3D12ResourceManager::Initialize(ID3D12Device5* pD3DDevice)
 
 HRESULT CD3D12ResourceManager::CreateVertexBuffer(const UINT sizePerVertex, const UINT vertexCount, D3D12_VERTEX_BUFFER_VIEW* pOutVertexBufferView, ID3D12Resource** ppOutBuffer, const void* pInInitData)
 {
-	*pOutVertexBufferView = {};
-	*ppOutBuffer = nullptr;
-
-	if (!m_pD3DDevice || !pInInitData)
+	if (!pOutVertexBufferView || !ppOutBuffer || !m_pD3DDevice || !pInInitData)
 	{
 		__debugbreak();
 		return E_FAIL;
 	}
+
+	*pOutVertexBufferView = {};
+	*ppOutBuffer = nullptr;
 
 	HRESULT hr = S_OK;
 
@@ -141,11 +141,9 @@ HRESULT CD3D12ResourceManager::CreateVertexBuffer(const UINT sizePerVertex, cons
 	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
 	m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
-	/////////////////
 	Fence();
 	WaitForFenceValue();
-	////////////////
-
+	
 	vertexBufferView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
 	vertexBufferView.SizeInBytes = bufferSize;
 	vertexBufferView.StrideInBytes = sizePerVertex;
@@ -158,14 +156,14 @@ HRESULT CD3D12ResourceManager::CreateVertexBuffer(const UINT sizePerVertex, cons
 
 HRESULT CD3D12ResourceManager::CreateIndexBuffer(const UINT indexCount, D3D12_INDEX_BUFFER_VIEW* pOutIndexBufferView, ID3D12Resource** ppOutBuffer, const void* pInitData)
 {
-	*pOutIndexBufferView = {};
-	*ppOutBuffer = nullptr;
-
-	if (!m_pD3DDevice || !pInitData)
+	if (!pOutIndexBufferView || !ppOutBuffer || !m_pD3DDevice || !pInitData)
 	{
 		__debugbreak();
 		return E_FAIL;
 	}
+
+	*pOutIndexBufferView = {};
+	*ppOutBuffer = nullptr;
 
 	HRESULT hr = S_OK;
 
@@ -523,6 +521,11 @@ UINT64 CD3D12ResourceManager::Fence()
 
 void CD3D12ResourceManager::WaitForFenceValue() const
 {
+	if (!m_fence || !m_fenceEvent)
+	{
+		return;
+	}
+
 	UINT64 expectedFence = m_fenceValue;
 	if (m_fence->GetCompletedValue() < expectedFence)
 	{

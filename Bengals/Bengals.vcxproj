@@ -189,8 +189,8 @@
     <ClInclude Include="Renderer\D3D12Renderer.h" />
     <ClInclude Include="Renderer\RenderHelper\ConstantBufferManager.h" />
     <ClInclude Include="Renderer\RenderHelper\ConstantBufferPool.h" />
-    <ClInclude Include="Renderer\RenderHelper\CpuDescriptorFreeListAllocator.h" />
-    <ClInclude Include="Renderer\RenderHelper\GpuDescriptorLinearAllocator.h" />
+    <ClInclude Include="Renderer\RenderHelper\PersistentCpuDescriptorAllocator.h" />
+    <ClInclude Include="Renderer\RenderHelper\FrameGpuDescriptorAllocator.h" />
     <ClInclude Include="Renderer\Manager\CD3D12ResourceManager.h" />
     <ClInclude Include="Renderer\Manager\TextureManager.h" />
     <ClInclude Include="Renderer\RenderObject\SpriteObject.h" />
@@ -214,8 +214,8 @@
     <ClCompile Include="Renderer\D3D12Renderer.cpp" />
     <ClCompile Include="Renderer\RenderHelper\ConstantBufferManager.cpp" />
     <ClCompile Include="Renderer\RenderHelper\ConstantBufferPool.cpp" />
-    <ClCompile Include="Renderer\RenderHelper\CpuDescriptorFreeListAllocator.cpp" />
-    <ClCompile Include="Renderer\RenderHelper\GpuDescriptorLinearAllocator.cpp" />
+    <ClCompile Include="Renderer\RenderHelper\PersistentCpuDescriptorAllocator.cpp" />
+    <ClCompile Include="Renderer\RenderHelper\FrameGpuDescriptorAllocator.cpp" />
     <ClCompile Include="Renderer\Manager\CD3D12ResourceManager.cpp" />
     <ClCompile Include="Renderer\Manager\TextureManager.cpp" />
     <ClCompile Include="Renderer\RenderObject\SpriteObject.cpp" />
