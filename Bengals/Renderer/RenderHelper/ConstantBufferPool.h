@@ -8,11 +8,11 @@ struct ConstantBufferContainer
 };
 
 /**
- * 프레임 단위 constant buffer 선형 할당기
+ * Frame-local linear allocator for constant buffers.
  *
- * 단일 upload heap 위에 사전 생성된 CBV 배열을 보유하며,
- * draw call마다 Allocate()로 다음 슬롯을 반환하고,
- * 매 프레임 Reset()으로 오프셋을 0으로 되돌려 전체를 재사용합니다.
+ * Owns a prebuilt CBV array on top of a single upload heap,
+ * returns the next slot on each Allocate() call,
+ * and reuses the entire allocation range by resetting the offset to zero every frame.
  */
 class CConstantBufferPool
 {

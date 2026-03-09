@@ -2,10 +2,12 @@
 
 struct IndexedTriGroup;
 class CD3D12Renderer;
+class CRenderQueue;
 
 class CBasicMeshObject
 {
 	friend class CD3D12Renderer;
+	friend class CRenderQueue;
 
 public:/*function*/
 	CBasicMeshObject() = delete;
@@ -47,3 +49,4 @@ private: /*variable*/
 	UINT m_maxTriGroupCount = 0;
 	UINT m_triGroupCount = 0;
 };
+

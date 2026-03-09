@@ -1,11 +1,13 @@
 #pragma once
 
 class CD3D12Renderer;
+class CRenderQueue;
 struct TextureHandle;
 
 class CSpriteObject
 {
 	friend class CD3D12Renderer;
+	friend class CRenderQueue;
 
 public: /*function*/
 	CSpriteObject() = delete;
@@ -61,3 +63,4 @@ private: /*variable*/
 	RECT m_rect = {};
 	XMFLOAT2 m_scale = { 1.0f, 1.0f };
 };
+

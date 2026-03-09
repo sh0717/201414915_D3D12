@@ -5,11 +5,9 @@
 #include <dxgi.h>
 #include <d3d12.h>
 #include <dxgidebug.h>
-#include <functional>
 #include <iostream>
 
 #include "Manager/CD3D12ResourceManager.h"
-#include "RenderHelper/ConstantBufferPool.h"
 #include "RenderHelper/ConstantBufferManager.h"
 #include "RenderHelper/FrameGpuDescriptorAllocator.h"
 #include "RenderHelper/PersistentCpuDescriptorAllocator.h"
@@ -17,6 +15,7 @@
 #include "RenderObject/BasicMeshObject.h"
 #include "RenderObject/SpriteObject.h"
 #include "Manager/TextureManager.h"
+#include "RenderHelper/RenderQueue.h"
 #include "Types/typedef.h"
 
 CD3D12Renderer::CD3D12Renderer(HWND hWindow, bool bEnableDebugLayer, bool bEnableGbv)
@@ -67,6 +66,12 @@ void CD3D12Renderer::EndRender()
 	FrameContext& ctx = m_frameContexts[m_currentContextIndex];
 
 	/*==========================================================================================*/
+	if (m_renderQueue)
+	{
+		m_renderQueue->Process(ctx.pCommandList);
+		m_renderQueue->Reset();
+	}
+
 	CD3DX12_RESOURCE_BARRIER RenderTargetBarrier = CD3DX12_RESOURCE_BARRIER::Transition(m_pRenderTargets[m_currentRenderTargetIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 	ctx.pCommandList->ResourceBarrier(1, &RenderTargetBarrier);
 	ctx.pCommandList->Close();
@@ -193,7 +198,20 @@ void CD3D12Renderer::EndCreateMesh(void* pMeshObjectHandle)
 void CD3D12Renderer::RenderMeshObject(void* pMeshObjectHandle, const XMMATRIX& worldMatrix)
 {
 	CBasicMeshObject* pMeshObj = (CBasicMeshObject*)pMeshObjectHandle;
-	pMeshObj->Draw(m_frameContexts[m_currentContextIndex].pCommandList, worldMatrix);
+	if (!pMeshObj || !m_renderQueue)
+	{
+		return;
+	}
+
+	RenderItem renderItem = {};
+	renderItem.Type = ERenderItemType::MeshObject;
+	renderItem.MeshItem.pMeshObject = pMeshObj;
+	renderItem.MeshItem.WorldMatrix = worldMatrix;
+
+	if (!m_renderQueue->Add(renderItem))
+	{
+		__debugbreak();
+	}
 }
 
 void CD3D12Renderer::DeleteBasicMeshObject(void* pMeshObjectHandle)
@@ -248,35 +266,49 @@ void CD3D12Renderer::RenderSpriteWithTex(void* pSpriteObjectHandle, int posX, in
 {
 	CSpriteObject* pSpriteObject = (CSpriteObject*)pSpriteObjectHandle;
 	TextureHandle* pTextureHandle = (TextureHandle*)pTexHandle;
-	if (!pSpriteObject || !pTextureHandle)
+	if (!pSpriteObject || !pTextureHandle || !m_renderQueue)
 	{
 		return;
 	}
 
-	if (pTextureHandle->pUploadBuffer)
+	RenderItem renderItem = {};
+	renderItem.Type = ERenderItemType::Sprite;
+	renderItem.SpriteItem.pSpriteObject = pSpriteObject;
+	renderItem.SpriteItem.Pos = { static_cast<float>(posX), static_cast<float>(posY) };
+	renderItem.SpriteItem.PixelSize = { static_cast<float>(width), static_cast<float>(height) };
+	renderItem.SpriteItem.Z = z;
+	renderItem.SpriteItem.pTexHandle = pTextureHandle;
+	renderItem.SpriteItem.bUseRect = (pRect != nullptr);
+	if (pRect)
 	{
-		if (pTextureHandle->bUpdated)
-		{
-			UpdateTexture(m_pD3DDevice, m_frameContexts[m_currentContextIndex].pCommandList, pTextureHandle->TextureResource, pTextureHandle->pUploadBuffer);
-		}
+		renderItem.SpriteItem.SampleRect = *pRect;
 	}
 
-	XMFLOAT2 pos = { static_cast<float>(posX), static_cast<float>(posY) };
-	XMFLOAT2 pixelSize = { static_cast<float>(width), static_cast<float>(height) };
-	pSpriteObject->DrawWithTex(m_frameContexts[m_currentContextIndex].pCommandList, pos, pixelSize, pRect, z, pTextureHandle);
+	if (!m_renderQueue->Add(renderItem))
+	{
+		__debugbreak();
+	}
 }
 
 void CD3D12Renderer::RenderSprite(void* pSpriteObjectHandle, int posX, int posY, int width, int height, float z)
 {
 	CSpriteObject* pSpriteObject = (CSpriteObject*)pSpriteObjectHandle;
-	if (!pSpriteObject)
+	if (!pSpriteObject || !m_renderQueue)
 	{
 		return;
 	}
 
-	XMFLOAT2 pos = { static_cast<float>(posX), static_cast<float>(posY) };
-	XMFLOAT2 pixelSize = { static_cast<float>(width), static_cast<float>(height) };
-	pSpriteObject->Draw(m_frameContexts[m_currentContextIndex].pCommandList, pos, pixelSize, z);
+	RenderItem renderItem = {};
+	renderItem.Type = ERenderItemType::Sprite;
+	renderItem.SpriteItem.pSpriteObject = pSpriteObject;
+	renderItem.SpriteItem.Pos = { static_cast<float>(posX), static_cast<float>(posY) };
+	renderItem.SpriteItem.PixelSize = { static_cast<float>(width), static_cast<float>(height) };
+	renderItem.SpriteItem.Z = z;
+
+	if (!m_renderQueue->Add(renderItem))
+	{
+		__debugbreak();
+	}
 }
 
 void CD3D12Renderer::UpdateTextureWithImage(void* pTexHandle, const BYTE* pSrcBits, UINT SrcWidth, UINT SrcHeight)
@@ -547,6 +579,13 @@ bool CD3D12Renderer::Initialize(HWND hWindow, bool bEnableDebugLayer, bool bEnab
 	m_textureManager = std::make_unique<CTextureManager>();
 	m_textureManager->Initialize(this);
 
+	m_renderQueue = std::make_unique<CRenderQueue>();
+	if (!m_renderQueue->Initialize(this, MAX_DRAW_COUNT_PER_FRAME))
+	{
+		__debugbreak();
+		return false;
+	}
+
 	return bResult = true;
 }
 
@@ -787,6 +826,7 @@ void CD3D12Renderer::Cleanup()
 	m_textureManager = nullptr;
 	m_resourceManager = nullptr;
 	m_persistentCpuDescriptorAllocator = nullptr;
+	m_renderQueue = nullptr;
 
 	CleanupFramebufferResources();
 	CleanupFramebufferDescriptorHeaps();
@@ -896,6 +936,9 @@ void CD3D12Renderer::CleanupFramebufferDescriptorHeaps()
 		m_pDsvDescriptorHeap = nullptr;
 	}
 }
+
+
+
 
 
 

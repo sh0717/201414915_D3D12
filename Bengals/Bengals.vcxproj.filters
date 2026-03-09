@@ -33,6 +33,9 @@
     <ClInclude Include="Renderer\D3D12Renderer.h">
       <Filter>Renderer</Filter>
     </ClInclude>
+    <ClInclude Include="Renderer\RenderHelper\RenderQueue.h">
+      <Filter>Renderer\RenderHelper</Filter>
+    </ClInclude>
     <ClInclude Include="Renderer\RenderObject\BasicMeshObject.h">
       <Filter>Renderer\RenderObject</Filter>
     </ClInclude>
@@ -79,6 +82,9 @@
   <ItemGroup>
     <ClCompile Include="Renderer\D3D12Renderer.cpp">
       <Filter>Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="Renderer\RenderHelper\RenderQueue.cpp">
+      <Filter>Renderer\RenderHelper</Filter>
     </ClCompile>
     <ClCompile Include="Renderer\RenderObject\BasicMeshObject.cpp">
       <Filter>Renderer\RenderObject</Filter>
@@ -140,3 +146,6 @@
     <None Include="packages.config" />
   </ItemGroup>
 </Project>
+
+
+

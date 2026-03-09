@@ -2,23 +2,29 @@
 #include "ConstantBufferManager.h"
 #include "../../../Util/D3DUtil.h"
 
+namespace
+{
+	constexpr std::array<ConstantBufferProperty, static_cast<UINT>(EConstantBufferType::Count)> ConstantBufferPropertyList =
+	{{
+		{ EConstantBufferType::Default, static_cast<UINT>(sizeof(ConstantBufferDefault)) },
+		{ EConstantBufferType::Sprite, static_cast<UINT>(sizeof(ConstantBufferSprite)) }
+	}};
+
+	static_assert(
+		ConstantBufferPropertyList.size() == static_cast<UINT>(EConstantBufferType::Count),
+		"Constant buffer property list must match EConstantBufferType::Count.");
+}
+
 bool CConstantBufferManager::Initialize(ID3D12Device5* pD3DDevice, UINT maxCbvCountPerType)
 {
-	if (!pD3DDevice)
+	if (!pD3DDevice || maxCbvCountPerType == 0)
 	{
 		__debugbreak();
 		return false;
 	}
 
-	static constexpr ConstantBufferProperty ConstantBufferPropertyList[] =
+	for (const ConstantBufferProperty& property : ConstantBufferPropertyList)
 	{
-		{ EConstantBufferType::Default, static_cast<UINT>(sizeof(ConstantBufferDefault)) },
-		{ EConstantBufferType::Sprite, static_cast<UINT>(sizeof(ConstantBufferSprite)) }
-	};
-
-	for (UINT i = 0; i < _countof(ConstantBufferPropertyList); i++)
-	{
-		const ConstantBufferProperty& property = ConstantBufferPropertyList[i];
 		const UINT poolIndex = static_cast<UINT>(property.Type);
 
 		m_constantBufferPoolList[poolIndex] = std::make_unique<CConstantBufferPool>();
@@ -46,7 +52,7 @@ void CConstantBufferManager::Reset()
 	}
 }
 
-CConstantBufferPool* CConstantBufferManager::GetConstantBufferPool(EConstantBufferType type) const
+CConstantBufferPool* CConstantBufferManager::GetConstantBufferPool(const EConstantBufferType type) const
 {
 	const UINT poolIndex = static_cast<UINT>(type);
 	if (poolIndex >= static_cast<UINT>(EConstantBufferType::Count))
@@ -57,4 +63,3 @@ CConstantBufferPool* CConstantBufferManager::GetConstantBufferPool(EConstantBuff
 
 	return m_constantBufferPoolList[poolIndex].get();
 }
-

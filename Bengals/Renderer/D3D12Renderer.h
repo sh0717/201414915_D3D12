@@ -7,6 +7,7 @@
  * 그 이후에는 null check 생략
  */
 
+class CRenderQueue;
 class CD3D12ResourceManager;
 class CPersistentCpuDescriptorAllocator;
 class CConstantBufferManager;
@@ -160,6 +161,7 @@ private:
 	std::unique_ptr<CD3D12ResourceManager> m_resourceManager = nullptr;
 	std::unique_ptr<CPersistentCpuDescriptorAllocator> m_persistentCpuDescriptorAllocator = nullptr;
 	std::unique_ptr<CTextureManager> m_textureManager = nullptr;
+	std::unique_ptr<CRenderQueue> m_renderQueue = nullptr;
 
 	XMVECTOR m_cameraPos = {};
 	XMVECTOR m_cameraDir = {};
