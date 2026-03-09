@@ -35,49 +35,90 @@ CD3D12Renderer::~CD3D12Renderer()
 void CD3D12Renderer::BeginRender()
 {
 	FrameContext& ctx = m_frameContexts[m_currentContextIndex];
+	CCommandListPool* pCommandListPool = ctx.CommandListPool.get();
+	if (!pCommandListPool)
+	{
+		__debugbreak();
+		return;
+	}
+
+	ID3D12GraphicsCommandList* pCommandList = pCommandListPool->GetCurrentCommandList();
+	if (!pCommandList)
+	{
+		__debugbreak();
+		return;
+	}
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE RTVDescriptorHandle(m_pRtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), m_currentRenderTargetIndex, m_rtvDescriptorSize);
+	CD3DX12_RESOURCE_BARRIER RenderTargetBarrier = CD3DX12_RESOURCE_BARRIER::Transition(m_pRenderTargets[m_currentRenderTargetIndex], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	pCommandList->ResourceBarrier(1, &RenderTargetBarrier);
+
+	const float BackColor[] = { 1.0f, 0.9f, 1.0f, 1.0f };
+	D3D12_CPU_DESCRIPTOR_HANDLE DsvDescriptorHandle{ m_pDsvDescriptorHeap->GetCPUDescriptorHandleForHeapStart() };
+	pCommandList->ClearRenderTargetView(RTVDescriptorHandle, BackColor, 0, nullptr);
+	pCommandList->ClearDepthStencilView(DsvDescriptorHandle, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
+
+	pCommandListPool->CloseAndExecute(m_pCommandQueue);
+}
+void CD3D12Renderer::EndRender()
+{
+	FrameContext& ctx = m_frameContexts[m_currentContextIndex];
+	if (!ctx.pCommandAllocator || !ctx.pCommandList)
+	{
+		__debugbreak();
+		return;
+	}
 
 	if (FAILED(ctx.pCommandAllocator->Reset()))
 	{
 		__debugbreak();
+		return;
 	}
 
 	if (FAILED(ctx.pCommandList->Reset(ctx.pCommandAllocator, nullptr)))
 	{
 		__debugbreak();
+		return;
 	}
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE RTVDescriptorHandle(m_pRtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), m_currentRenderTargetIndex, m_rtvDescriptorSize);
-
-	CD3DX12_RESOURCE_BARRIER RenderTargetBarrier = CD3DX12_RESOURCE_BARRIER::Transition(m_pRenderTargets[m_currentRenderTargetIndex], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
-	ctx.pCommandList->ResourceBarrier(1, &RenderTargetBarrier);
-
-	const float BackColor[] = { 1.0f, 0.9f, 1.0f, 1.0f };
-	D3D12_CPU_DESCRIPTOR_HANDLE DsvDescriptorHandle{ m_pDsvDescriptorHeap->GetCPUDescriptorHandleForHeapStart()};
-
-	ctx.pCommandList->ClearRenderTargetView(RTVDescriptorHandle, BackColor, 0, nullptr);
-	ctx.pCommandList->ClearDepthStencilView(DsvDescriptorHandle, D3D12_CLEAR_FLAG_DEPTH, 1.f, 0, 0, nullptr);
+	D3D12_CPU_DESCRIPTOR_HANDLE DsvDescriptorHandle{ m_pDsvDescriptorHeap->GetCPUDescriptorHandleForHeapStart() };
 	ctx.pCommandList->RSSetViewports(1, &m_viewport);
 	ctx.pCommandList->RSSetScissorRects(1, &m_scissorRect);
 	ctx.pCommandList->OMSetRenderTargets(1, &RTVDescriptorHandle, FALSE, &DsvDescriptorHandle);
-	/*==========================================================================================*/
-}
-void CD3D12Renderer::EndRender()
-{
-	FrameContext& ctx = m_frameContexts[m_currentContextIndex];
 
-	/*==========================================================================================*/
 	if (m_renderQueue)
 	{
 		m_renderQueue->Process(ctx.pCommandList);
 		m_renderQueue->Reset();
 	}
 
-	CD3DX12_RESOURCE_BARRIER RenderTargetBarrier = CD3DX12_RESOURCE_BARRIER::Transition(m_pRenderTargets[m_currentRenderTargetIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
-	ctx.pCommandList->ResourceBarrier(1, &RenderTargetBarrier);
-	ctx.pCommandList->Close();
+	if (FAILED(ctx.pCommandList->Close()))
+	{
+		__debugbreak();
+		return;
+	}
 
 	ID3D12CommandList* pCommandLists[] = { ctx.pCommandList };
-    m_pCommandQueue->ExecuteCommandLists(_countof(pCommandLists), pCommandLists);
+	m_pCommandQueue->ExecuteCommandLists(_countof(pCommandLists), pCommandLists);
+
+	CCommandListPool* pCommandListPool = ctx.CommandListPool.get();
+	if (!pCommandListPool)
+	{
+		__debugbreak();
+		return;
+	}
+
+	ID3D12GraphicsCommandList* pTransitionCommandList = pCommandListPool->GetCurrentCommandList();
+	if (!pTransitionCommandList)
+	{
+		__debugbreak();
+		return;
+	}
+
+	CD3DX12_RESOURCE_BARRIER RenderTargetBarrier = CD3DX12_RESOURCE_BARRIER::Transition(m_pRenderTargets[m_currentRenderTargetIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+	pTransitionCommandList->ResourceBarrier(1, &RenderTargetBarrier);
+	pCommandListPool->CloseAndExecute(m_pCommandQueue);
 }
 
 void CD3D12Renderer::Present()
@@ -111,6 +152,10 @@ void CD3D12Renderer::Present()
 	// 다음 컨텍스트의 풀 리셋
 	nextCtx.ConstantBufferManager->Reset();
 	nextCtx.GpuDescriptorAllocator->Reset();
+	if (nextCtx.CommandListPool)
+	{
+		nextCtx.CommandListPool->Reset();
+	}
 
 	// 컨텍스트 전환
 	m_currentContextIndex = nextContextIndex;
@@ -635,7 +680,11 @@ bool CD3D12Renderer::InitializeFrameContexts()
 			return false;
 		}
 
-		ctx.pCommandList->Close();
+		if (FAILED(ctx.pCommandList->Close()))
+		{
+			__debugbreak();
+			return false;
+		}
 
 		ctx.GpuDescriptorAllocator = std::make_unique<CFrameGpuDescriptorAllocator>();
 		if (!ctx.GpuDescriptorAllocator->Initialize(m_pD3DDevice, MAX_DRAW_COUNT_PER_FRAME * CBasicMeshObject::MaxDescriptorCountForDraw))
@@ -650,11 +699,27 @@ bool CD3D12Renderer::InitializeFrameContexts()
 			__debugbreak();
 			return false;
 		}
+
+		if (!InitializeCommandListPool(ctx))
+		{
+			__debugbreak();
+			return false;
+		}
 	}
 
 	return true;
 }
 
+bool CD3D12Renderer::InitializeCommandListPool(FrameContext& ctx)
+{
+	ctx.CommandListPool = std::make_unique<CCommandListPool>();
+	if (!ctx.CommandListPool)
+	{
+		return false;
+	}
+
+	return ctx.CommandListPool->Initialize(m_pD3DDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, MAX_COMMAND_LIST_COUNT_PER_FRAME);
+}
 bool CD3D12Renderer::InitializeFramebufferResources(UINT width, UINT height)
 {
 	assert(m_pD3DDevice != nullptr && m_pSwapChain != nullptr);
@@ -886,6 +951,7 @@ void CD3D12Renderer::CleanupFrameContexts()
 {
 	for (FrameContext& ctx : m_frameContexts)
 	{
+		CleanupCommandListPool(ctx);
 		ctx.GpuDescriptorAllocator = nullptr;
 		ctx.ConstantBufferManager = nullptr;
 		ctx.LastFenceValue = 0;
@@ -902,6 +968,11 @@ void CD3D12Renderer::CleanupFrameContexts()
 			ctx.pCommandAllocator = nullptr;
 		}
 	}
+}
+
+void CD3D12Renderer::CleanupCommandListPool(FrameContext& ctx)
+{
+	ctx.CommandListPool = nullptr;
 }
 
 void CD3D12Renderer::CleanupFramebufferResources()
@@ -936,6 +1007,11 @@ void CD3D12Renderer::CleanupFramebufferDescriptorHeaps()
 		m_pDsvDescriptorHeap = nullptr;
 	}
 }
+
+
+
+
+
 
 
 

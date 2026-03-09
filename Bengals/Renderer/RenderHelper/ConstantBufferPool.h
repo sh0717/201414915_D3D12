@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 struct ConstantBufferContainer
 {
 	D3D12_CPU_DESCRIPTOR_HANDLE CbvDescriptorHandle = {};
@@ -26,7 +28,7 @@ public:
 	void Reset();
 
 private:
-	std::unique_ptr<ConstantBufferContainer[]> m_constantBufferContainerList = nullptr;
+	std::vector<ConstantBufferContainer> m_constantBufferContainerList = {};
 
 	UINT m_allocatedCbvCount = 0;
 	UINT m_maxCbvCount = 0;

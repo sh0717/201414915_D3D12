@@ -39,7 +39,8 @@ bool CConstantBufferPool::Initialize(ID3D12Device5* pD3DDevice, UINT sizePerCons
 	CD3DX12_RANGE writeRange(0, 0);
 	m_constantBufferChunk->Map(0, &writeRange, reinterpret_cast<void**>(&m_pSystemAddressForStart));
 
-	m_constantBufferContainerList = std::make_unique<ConstantBufferContainer[]>(m_maxCbvCount);
+	m_constantBufferContainerList.clear();
+	m_constantBufferContainerList.resize(m_maxCbvCount);
 
 	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
 	cbvDesc.BufferLocation = m_constantBufferChunk->GetGPUVirtualAddress();
@@ -47,7 +48,7 @@ bool CConstantBufferPool::Initialize(ID3D12Device5* pD3DDevice, UINT sizePerCons
 
 	UINT8* pSystemMemPtr = m_pSystemAddressForStart;
 	CD3DX12_CPU_DESCRIPTOR_HANDLE descriptorHandle(m_cbvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
-	
+
 	const UINT descriptorSize = pD3DDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	for (DWORD i = 0; i < m_maxCbvCount; i++)
 	{

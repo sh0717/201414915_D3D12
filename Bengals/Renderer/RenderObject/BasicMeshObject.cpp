@@ -27,22 +27,49 @@ CBasicMeshObject::~CBasicMeshObject()
 
 bool CBasicMeshObject::Initialize(CD3D12Renderer* pRenderer)
 {
-	m_pRenderer = pRenderer;
-
-	if (m_pRenderer)
+	if (!pRenderer)
 	{
-		if (m_initRefCount <= 0)
-		{
-			const bool bInitRootSignature = InitRootSignature();
-			const bool bInitPipelineState = InitPipelineState();
-			UNREFERENCED_PARAMETER(bInitRootSignature);
-			UNREFERENCED_PARAMETER(bInitPipelineState);
-		}
-
-		m_initRefCount++;
+		__debugbreak();
+		return false;
 	}
 
-	return m_initRefCount > 0;
+	m_pRenderer = pRenderer;
+
+	if (m_initRefCount <= 0)
+	{
+		if (!InitRootSignature())
+		{
+			if (m_pRootSignature)
+			{
+				m_pRootSignature->Release();
+				m_pRootSignature = nullptr;
+			}
+
+			m_pRenderer = nullptr;
+			return false;
+		}
+
+		if (!InitPipelineState())
+		{
+			if (m_pPipelineStateObject)
+			{
+				m_pPipelineStateObject->Release();
+				m_pPipelineStateObject = nullptr;
+			}
+
+			if (m_pRootSignature)
+			{
+				m_pRootSignature->Release();
+				m_pRootSignature = nullptr;
+			}
+
+			m_pRenderer = nullptr;
+			return false;
+		}
+	}
+
+	m_initRefCount++;
+	return true;
 }
 
 bool CBasicMeshObject::InitRootSignature()
@@ -51,10 +78,16 @@ bool CBasicMeshObject::InitRootSignature()
 
 	if (m_pRenderer == nullptr)
 	{
+		__debugbreak();
 		return bResult;
 	}
 
 	ID3D12Device5* pD3DDevice = m_pRenderer->GetD3DDevice();
+	if (pD3DDevice == nullptr)
+	{
+		__debugbreak();
+		return bResult;
+	}
 
 	ComPtr<ID3DBlob> pSignature = nullptr;
 	ComPtr<ID3DBlob> pError = nullptr;
@@ -81,11 +114,13 @@ bool CBasicMeshObject::InitRootSignature()
 	if (FAILED(D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &pSignature, &pError)))
 	{
 		__debugbreak();
+		return bResult;
 	}
 
 	if (FAILED(pD3DDevice->CreateRootSignature(0, pSignature->GetBufferPointer(), pSignature->GetBufferSize(), IID_PPV_ARGS(&m_pRootSignature))))
 	{
 		__debugbreak();
+		return bResult;
 	}
 
 	return bResult = true;
@@ -359,4 +394,5 @@ void CBasicMeshObject::CleanTriGroups()
 	m_triGroupCount = 0;
 	m_maxTriGroupCount = 0;
 }
+
 

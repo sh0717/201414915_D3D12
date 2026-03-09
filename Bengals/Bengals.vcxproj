@@ -76,22 +76,22 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <OutDir>.</OutDir>
+    <OutDir>.\</OutDir>
     <TargetName>$(ProjectName)_x64_debug</TargetName>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <OutDir>.</OutDir>
+    <OutDir>.\</OutDir>
     <TargetName>$(ProjectName)_x86_debug</TargetName>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <OutDir>.</OutDir>
+    <OutDir>.\</OutDir>
     <TargetName>$(ProjectName)_x86_release</TargetName>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <OutDir>.</OutDir>
+    <OutDir>.\</OutDir>
     <TargetName>$(ProjectName)_x64_release</TargetName>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
@@ -188,6 +188,7 @@
     <ClInclude Include="Renderer\RenderObject\BasicMeshObject.h" />
     <ClInclude Include="Renderer\D3D12Renderer.h" />
     <ClInclude Include="Renderer\RenderHelper\RenderQueue.h" />
+    <ClInclude Include="Renderer\RenderHelper\CommandListPool.h" />
     <ClInclude Include="Renderer\RenderHelper\ConstantBufferManager.h" />
     <ClInclude Include="Renderer\RenderHelper\ConstantBufferPool.h" />
     <ClInclude Include="Renderer\RenderHelper\PersistentCpuDescriptorAllocator.h" />
@@ -214,6 +215,7 @@
     <ClCompile Include="Renderer\RenderObject\BasicMeshObject.cpp" />
     <ClCompile Include="Renderer\D3D12Renderer.cpp" />
     <ClCompile Include="Renderer\RenderHelper\RenderQueue.cpp" />
+    <ClCompile Include="Renderer\RenderHelper\CommandListPool.cpp" />
     <ClCompile Include="Renderer\RenderHelper\ConstantBufferManager.cpp" />
     <ClCompile Include="Renderer\RenderHelper\ConstantBufferPool.cpp" />
     <ClCompile Include="Renderer\RenderHelper\PersistentCpuDescriptorAllocator.cpp" />
@@ -266,4 +268,7 @@
     <Error Condition="!Exists('packages\Microsoft.Direct3D.D3D12.1.618.5\build\native\Microsoft.Direct3D.D3D12.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.Direct3D.D3D12.1.618.5\build\native\Microsoft.Direct3D.D3D12.targets'))" />
   </Target>
 </Project>
+
+
+
 

@@ -14,6 +14,7 @@ class CConstantBufferManager;
 class CTextureManager;
 
 #include "RenderHelper/FrameGpuDescriptorAllocator.h"
+#include "RenderHelper/CommandListPool.h"
 #include "RenderHelper/ConstantBufferManager.h"
 
 struct FrameContext
@@ -22,6 +23,7 @@ struct FrameContext
 	ID3D12GraphicsCommandList* pCommandList = nullptr;
 	std::unique_ptr<CFrameGpuDescriptorAllocator> GpuDescriptorAllocator = nullptr;
 	std::unique_ptr<CConstantBufferManager> ConstantBufferManager = nullptr;
+	std::unique_ptr<CCommandListPool> CommandListPool = nullptr;
 	uint64_t LastFenceValue = 0;
 };
 
@@ -107,6 +109,7 @@ private:
 
 	void	CreateFence();
 	bool	InitializeFrameContexts();
+	bool	InitializeCommandListPool(FrameContext& ctx);
 
 	bool	InitializeFramebufferResources(UINT width, UINT height);
 	bool	CreateFramebufferDescriptorHeaps();
@@ -118,6 +121,7 @@ private:
 	void	Cleanup();
 	void	CleanupFence();
 	void	CleanupFrameContexts();
+	void	CleanupCommandListPool(FrameContext& ctx);
 	void	CleanupFramebufferResources();
 	void	CleanupFramebufferDescriptorHeaps();
 
@@ -125,6 +129,7 @@ private:
 
 	static constexpr uint32_t SWAP_CHAIN_FRAME_COUNT = 3;
 	static constexpr uint32_t MAX_PENDING_FRAME_COUNT = SWAP_CHAIN_FRAME_COUNT - 1;
+	static constexpr uint32_t MAX_COMMAND_LIST_COUNT_PER_FRAME = 2;
 	static constexpr uint32_t MAX_DRAW_COUNT_PER_FRAME = 4096;
 	static constexpr uint32_t MAX_DESCRIPTOR_COUNT = 4096;
 
@@ -168,6 +173,8 @@ private:
 	XMMATRIX m_viewMatrix = {};
 	XMMATRIX m_projectionMatrix = {};
 };
+
+
 
 
 

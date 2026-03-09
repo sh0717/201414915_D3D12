@@ -36,6 +36,9 @@
     <ClInclude Include="Renderer\RenderHelper\RenderQueue.h">
       <Filter>Renderer\RenderHelper</Filter>
     </ClInclude>
+    <ClInclude Include="Renderer\RenderHelper\CommandListPool.h">
+      <Filter>Renderer\RenderHelper</Filter>
+    </ClInclude>
     <ClInclude Include="Renderer\RenderObject\BasicMeshObject.h">
       <Filter>Renderer\RenderObject</Filter>
     </ClInclude>
@@ -84,6 +87,9 @@
       <Filter>Renderer</Filter>
     </ClCompile>
     <ClCompile Include="Renderer\RenderHelper\RenderQueue.cpp">
+      <Filter>Renderer\RenderHelper</Filter>
+    </ClCompile>
+    <ClCompile Include="Renderer\RenderHelper\CommandListPool.cpp">
       <Filter>Renderer\RenderHelper</Filter>
     </ClCompile>
     <ClCompile Include="Renderer\RenderObject\BasicMeshObject.cpp">
@@ -146,6 +152,8 @@
     <None Include="packages.config" />
   </ItemGroup>
 </Project>
+
+
 
 
 
