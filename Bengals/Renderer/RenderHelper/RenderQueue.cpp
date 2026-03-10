@@ -33,15 +33,16 @@ bool CRenderQueue::Add(const RenderItem& pRenderItem)
 }
 
 UINT CRenderQueue::Process(
+	DWORD renderThreadIndex,
 	CCommandListPool* pCommandListPool,
-	ID3D12CommandQueue* pCommandQueue,
+	std::vector<ID3D12CommandList*>& recordedCommandListArray,
 	const D3D12_VIEWPORT& viewport,
 	const D3D12_RECT& scissorRect,
 	D3D12_CPU_DESCRIPTOR_HANDLE rtvDescriptorHandle,
 	D3D12_CPU_DESCRIPTOR_HANDLE dsvDescriptorHandle,
 	UINT processCountPerCommandList)
 {
-	if (!m_pRenderer || !pCommandListPool || !pCommandQueue)
+	if (!m_pRenderer || !pCommandListPool)
 	{
 		return 0;
 	}
@@ -61,8 +62,8 @@ UINT CRenderQueue::Process(
 		commandListCapacity = (static_cast<UINT>(m_itemList.size()) + processCountPerCommandList - 1) / processCountPerCommandList;
 	}
 
-	std::vector<ID3D12CommandList*> commandListArray = {};
-	commandListArray.reserve(commandListCapacity);
+	recordedCommandListArray.clear();
+	recordedCommandListArray.reserve(commandListCapacity);
 
 	ID3D12GraphicsCommandList* pCommandList = nullptr;
 	UINT processedItemCount = 0;
@@ -82,7 +83,7 @@ UINT CRenderQueue::Process(
 			SetupCommandListForDraw(pCommandList, viewport, scissorRect, rtvDescriptorHandle, dsvDescriptorHandle);
 		}
 
-		if (!ProcessRenderItem(pCommandList, pD3DDevice, renderItem))
+		if (!ProcessRenderItem(pCommandList, pD3DDevice, renderThreadIndex, renderItem))
 		{
 			continue;
 		}
@@ -93,27 +94,25 @@ UINT CRenderQueue::Process(
 		if (processedItemCountPerCommandList >= maxProcessCountPerCommandList)
 		{
 			pCommandListPool->Close();
-			commandListArray.push_back(pCommandList);
+			recordedCommandListArray.push_back(pCommandList);
 			pCommandList = nullptr;
 			processedItemCountPerCommandList = 0;
 		}
 	}
 
-	if (pCommandList && processedItemCountPerCommandList > 0)
+	if (pCommandList)
 	{
 		pCommandListPool->Close();
-		commandListArray.push_back(pCommandList);
-	}
-
-	if (!commandListArray.empty())
-	{
-		pCommandQueue->ExecuteCommandLists(static_cast<UINT>(commandListArray.size()), commandListArray.data());
+		if (processedItemCountPerCommandList > 0)
+		{
+			recordedCommandListArray.push_back(pCommandList);
+		}
 	}
 
 	return processedItemCount;
 }
 
-bool CRenderQueue::ProcessRenderItem(ID3D12GraphicsCommandList* pCommandList, ID3D12Device5* pD3DDevice, const RenderItem& renderItem)
+bool CRenderQueue::ProcessRenderItem(ID3D12GraphicsCommandList* pCommandList, ID3D12Device5* pD3DDevice, DWORD renderThreadIndex, const RenderItem& renderItem)
 {
 	if (!pCommandList || !pD3DDevice)
 	{
@@ -128,7 +127,7 @@ bool CRenderQueue::ProcessRenderItem(ID3D12GraphicsCommandList* pCommandList, ID
 			return false;
 		}
 
-		renderItem.MeshItem.pMeshObject->Draw(pCommandList, renderItem.MeshItem.WorldMatrix);
+		renderItem.MeshItem.pMeshObject->Draw(pCommandList, renderThreadIndex, renderItem.MeshItem.WorldMatrix);
 		return true;
 
 	case ERenderItemType::Sprite:
@@ -151,6 +150,7 @@ bool CRenderQueue::ProcessRenderItem(ID3D12GraphicsCommandList* pCommandList, ID
 			const RECT* pRect = renderItem.SpriteItem.bUseRect ? &renderItem.SpriteItem.SampleRect : nullptr;
 			pSpriteObject->DrawWithTex(
 				pCommandList,
+				renderThreadIndex,
 				renderItem.SpriteItem.Pos,
 				renderItem.SpriteItem.PixelSize,
 				pRect,
@@ -161,6 +161,7 @@ bool CRenderQueue::ProcessRenderItem(ID3D12GraphicsCommandList* pCommandList, ID
 		{
 			pSpriteObject->Draw(
 				pCommandList,
+				renderThreadIndex,
 				renderItem.SpriteItem.Pos,
 				renderItem.SpriteItem.PixelSize,
 				renderItem.SpriteItem.Z);
@@ -196,5 +197,3 @@ void CRenderQueue::Reset()
 {
 	m_itemList.clear();
 }
-
-

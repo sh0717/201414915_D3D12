@@ -277,15 +277,15 @@ bool CSpriteObject::InitSharedBuffers()
 	return true;
 }
 
-void CSpriteObject::DrawWithTex(ID3D12GraphicsCommandList* pCommandList, XMFLOAT2 pos, XMFLOAT2 pixelSize, const RECT* pRect, float z, TextureHandle* pTexHandle)
+void CSpriteObject::DrawWithTex(ID3D12GraphicsCommandList* pCommandList, DWORD renderThreadIndex, XMFLOAT2 pos, XMFLOAT2 pixelSize, const RECT* pRect, float z, TextureHandle* pTexHandle)
 {
 	if (!pCommandList || !m_pRenderer || !pTexHandle || !pTexHandle->TextureResource)
 	{
 		return;
 	}
 
-	CFrameGpuDescriptorAllocator* pFrameGpuDescriptorAllocator = m_pRenderer->GetFrameGpuDescriptorAllocator();
-	CConstantBufferPool* pConstantBufferPool = m_pRenderer->GetConstantBufferPool(EConstantBufferType::Sprite);
+	CFrameGpuDescriptorAllocator* pFrameGpuDescriptorAllocator = m_pRenderer->GetFrameGpuDescriptorAllocator(renderThreadIndex);
+	CConstantBufferPool* pConstantBufferPool = m_pRenderer->GetConstantBufferPool(EConstantBufferType::Sprite, renderThreadIndex);
 	if (!pFrameGpuDescriptorAllocator || !pConstantBufferPool)
 	{
 		return;
@@ -385,6 +385,7 @@ void CSpriteObject::DrawWithTex(ID3D12GraphicsCommandList* pCommandList, XMFLOAT
 
 void CSpriteObject::Draw(
 	ID3D12GraphicsCommandList* pCommandList,
+	DWORD renderThreadIndex,
 	XMFLOAT2 pos,
 	XMFLOAT2 pixelSize,
 	float z)
@@ -406,7 +407,7 @@ void CSpriteObject::Draw(
 		drawPixelSize.y = pixelSize.y;
 	}
 
-	DrawWithTex(pCommandList, pos, drawPixelSize, &m_rect, z, m_pTexHandle);
+	DrawWithTex(pCommandList, renderThreadIndex, pos, drawPixelSize, &m_rect, z, m_pTexHandle);
 }
 
 void CSpriteObject::Clean()
@@ -465,4 +466,3 @@ void CSpriteObject::CleanSharedResource()
 		}
 	}
 }
-

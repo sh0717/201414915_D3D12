@@ -26,7 +26,7 @@ bool CGame::Initialize(HWND hWnd, bool bEnableDebugLayer, bool bEnableGBV)
 	}
 
 	// 100 box objects at random positions
-	const UINT GameObjCount = 100;
+	const UINT GameObjCount = 300;
 	for (UINT i = 0; i < GameObjCount; i++)
 	{
 		CGameObject* pGameObj = CreateGameObject(EMeshType::Box);

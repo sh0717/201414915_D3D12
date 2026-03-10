@@ -256,7 +256,7 @@ void CBasicMeshObject::EndCreateMesh()
 	
 }
 
-void CBasicMeshObject::Draw(ID3D12GraphicsCommandList* pCommandList, const XMMATRIX& worldMatrix)
+void CBasicMeshObject::Draw(ID3D12GraphicsCommandList* pCommandList, DWORD renderThreadIndex, const XMMATRIX& worldMatrix)
 {
 	if (pCommandList == nullptr || m_pRenderer == nullptr || m_triGroupCount == 0)
 	{
@@ -265,8 +265,13 @@ void CBasicMeshObject::Draw(ID3D12GraphicsCommandList* pCommandList, const XMMAT
 	}
 
 	ID3D12Device5* pD3DDevice = m_pRenderer->GetD3DDevice();
-	CConstantBufferPool* pConstantBufferPool = m_pRenderer->GetConstantBufferPool(EConstantBufferType::Default);
-	CFrameGpuDescriptorAllocator* pFrameGpuDescriptorAllocator = m_pRenderer->GetFrameGpuDescriptorAllocator();
+	CConstantBufferPool* pConstantBufferPool = m_pRenderer->GetConstantBufferPool(EConstantBufferType::Default, renderThreadIndex);
+	CFrameGpuDescriptorAllocator* pFrameGpuDescriptorAllocator = m_pRenderer->GetFrameGpuDescriptorAllocator(renderThreadIndex);
+	if (!pD3DDevice || !pConstantBufferPool || !pFrameGpuDescriptorAllocator)
+	{
+		__debugbreak();
+		return;
+	}
 
 	ID3D12DescriptorHeap* pDescriptorHeap = pFrameGpuDescriptorAllocator->GetDescriptorHeap();
 	const UINT descriptorSize = pFrameGpuDescriptorAllocator->GetDescriptorSizeCbvSrvUav();
@@ -394,5 +399,3 @@ void CBasicMeshObject::CleanTriGroups()
 	m_triGroupCount = 0;
 	m_maxTriGroupCount = 0;
 }
-
-

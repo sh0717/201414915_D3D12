@@ -55,8 +55,9 @@ public:
 	bool Add(const RenderItem& pRenderItem);
 
 	UINT Process(
+		DWORD renderThreadIndex,
 		CCommandListPool* pCommandListPool,
-		ID3D12CommandQueue* pCommandQueue,
+		std::vector<ID3D12CommandList*>& recordedCommandListArray,
 		const D3D12_VIEWPORT& viewport,
 		const D3D12_RECT& scissorRect,
 		D3D12_CPU_DESCRIPTOR_HANDLE rtvDescriptorHandle,
@@ -70,7 +71,7 @@ public:
 	}
 
 private:
-	bool ProcessRenderItem(ID3D12GraphicsCommandList* pCommandList, ID3D12Device5* pD3DDevice, const RenderItem& renderItem);
+	bool ProcessRenderItem(ID3D12GraphicsCommandList* pCommandList, ID3D12Device5* pD3DDevice, DWORD renderThreadIndex, const RenderItem& renderItem);
 	void SetupCommandListForDraw(
 		ID3D12GraphicsCommandList* pCommandList,
 		const D3D12_VIEWPORT& viewport,

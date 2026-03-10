@@ -20,6 +20,7 @@ public: /*function*/
 
 	void DrawWithTex(
 		ID3D12GraphicsCommandList* pCommandList,
+		DWORD renderThreadIndex,
 		XMFLOAT2 pos,
 		XMFLOAT2 pixelSize,
 		const RECT* pRect,
@@ -28,6 +29,7 @@ public: /*function*/
 
 	void Draw(
 		ID3D12GraphicsCommandList* pCommandList,
+		DWORD renderThreadIndex,
 		XMFLOAT2 pos,
 		XMFLOAT2 pixelSize,
 		float z);
@@ -63,4 +65,3 @@ private: /*variable*/
 	RECT m_rect = {};
 	XMFLOAT2 m_scale = { 1.0f, 1.0f };
 };
-

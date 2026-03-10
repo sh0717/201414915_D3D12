@@ -6,6 +6,8 @@
 #include <d3d12.h>
 #include <dxgidebug.h>
 #include <iostream>
+#include <process.h>
+#include <thread>
 
 #include "Manager/CD3D12ResourceManager.h"
 #include "RenderHelper/ConstantBufferManager.h"
@@ -16,7 +18,10 @@
 #include "RenderObject/SpriteObject.h"
 #include "Manager/TextureManager.h"
 #include "RenderHelper/RenderQueue.h"
+#include "RenderHelper/RenderThread.h"
 #include "Types/typedef.h"
+
+RenderThreadContext::~RenderThreadContext() = default;
 
 CD3D12Renderer::CD3D12Renderer(HWND hWindow, bool bEnableDebugLayer, bool bEnableGbv)
 {
@@ -35,6 +40,7 @@ CD3D12Renderer::~CD3D12Renderer()
 void CD3D12Renderer::BeginRender()
 {
 	FrameContext& ctx = m_frameContexts[m_currentContextIndex];
+	m_currentRenderThreadIndex = 0;
 	CCommandListPool* pCommandListPool = ctx.CommandListPool.get();
 	if (!pCommandListPool)
 	{
@@ -70,13 +76,65 @@ void CD3D12Renderer::EndRender()
 		return;
 	}
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE RTVDescriptorHandle(m_pRtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), m_currentRenderTargetIndex, m_rtvDescriptorSize);
-	D3D12_CPU_DESCRIPTOR_HANDLE DsvDescriptorHandle{ m_pDsvDescriptorHeap->GetCPUDescriptorHandleForHeapStart() };
+	std::vector<DWORD> activeThreadIndexList = {};
+	std::vector<HANDLE> completeEventList = {};
+	activeThreadIndexList.reserve(m_renderThreadCount);
+	completeEventList.reserve(m_renderThreadCount);
 
-	if (m_renderQueue)
+	for (DWORD threadIndex = 0; threadIndex < m_renderThreadCount; threadIndex++)
 	{
-		m_renderQueue->Process(pCommandListPool, m_pCommandQueue, m_viewport, m_scissorRect, RTVDescriptorHandle, DsvDescriptorHandle, 200);
-		m_renderQueue->Reset();
+		if (threadIndex >= ctx.RenderThreadContextList.size() || threadIndex >= m_renderThreadDescList.size())
+		{
+			__debugbreak();
+			continue;
+		}
+
+		RenderThreadContext& renderThreadContext = ctx.RenderThreadContextList[threadIndex];
+		CRenderQueue* pRenderQueue = renderThreadContext.RenderQueue.get();
+		if (!pRenderQueue || pRenderQueue->GetItemCount() == 0)
+		{
+			continue;
+		}
+
+		RenderThreadDesc& renderThreadDesc = m_renderThreadDescList[threadIndex];
+		if (!renderThreadDesc.ThreadHandle || !renderThreadDesc.EventList[RenderThreadEventTypeProcess] || !renderThreadDesc.CompleteEvent)
+		{
+			__debugbreak();
+			continue;
+		}
+
+		activeThreadIndexList.push_back(threadIndex);
+		completeEventList.push_back(renderThreadDesc.CompleteEvent);
+		SetEvent(renderThreadDesc.EventList[RenderThreadEventTypeProcess]);
+	}
+
+	if (!completeEventList.empty())
+	{
+		DWORD waitResult = WaitForMultipleObjects(static_cast<DWORD>(completeEventList.size()), completeEventList.data(), TRUE, INFINITE);
+		if (waitResult == WAIT_FAILED)
+		{
+			__debugbreak();
+		}
+	}
+
+	UINT totalRecordedCommandListCount = 0;
+	for (DWORD threadIndex : activeThreadIndexList)
+	{
+		totalRecordedCommandListCount += static_cast<UINT>(ctx.RenderThreadContextList[threadIndex].RecordedCommandListArray.size());
+	}
+
+	std::vector<ID3D12CommandList*> commandListArray = {};
+	commandListArray.reserve(totalRecordedCommandListCount);
+	for (DWORD threadIndex : activeThreadIndexList)
+	{
+		RenderThreadContext& renderThreadContext = ctx.RenderThreadContextList[threadIndex];
+		commandListArray.insert(commandListArray.end(),renderThreadContext.RecordedCommandListArray.begin(),renderThreadContext.RecordedCommandListArray.end());
+		renderThreadContext.RecordedCommandListArray.clear();
+	}
+
+	if (!commandListArray.empty())
+	{
+		m_pCommandQueue->ExecuteCommandLists(static_cast<UINT>(commandListArray.size()), commandListArray.data());
 	}
 
 	ID3D12GraphicsCommandList* pTransitionCommandList = pCommandListPool->GetCurrentCommandList();
@@ -86,8 +144,11 @@ void CD3D12Renderer::EndRender()
 		return;
 	}
 
-	CD3DX12_RESOURCE_BARRIER RenderTargetBarrier = CD3DX12_RESOURCE_BARRIER::Transition(m_pRenderTargets[m_currentRenderTargetIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
-	pTransitionCommandList->ResourceBarrier(1, &RenderTargetBarrier);
+	CD3DX12_RESOURCE_BARRIER renderTargetBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+		m_pRenderTargets[m_currentRenderTargetIndex],
+		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		D3D12_RESOURCE_STATE_PRESENT);
+	pTransitionCommandList->ResourceBarrier(1, &renderTargetBarrier);
 	pCommandListPool->CloseAndExecute(m_pCommandQueue);
 }
 
@@ -115,16 +176,39 @@ void CD3D12Renderer::Present()
     m_currentRenderTargetIndex = m_pSwapChain->GetCurrentBackBufferIndex();
 
 	// 다음 컨텍스트의 이전 GPU 작업 완료 대기
-	DWORD nextContextIndex = (m_currentContextIndex + 1) % MAX_PENDING_FRAME_COUNT;
+	DWORD nextContextIndex = (m_currentContextIndex + 1) % MaxPendingFrameCount;
 	FrameContext& nextCtx = m_frameContexts[nextContextIndex];
 	WaitForFenceValue(nextCtx.LastFenceValue);
 
 	// 다음 컨텍스트의 풀 리셋
-	nextCtx.ConstantBufferManager->Reset();
-	nextCtx.GpuDescriptorAllocator->Reset();
 	if (nextCtx.CommandListPool)
 	{
 		nextCtx.CommandListPool->Reset();
+	}
+
+	for (RenderThreadContext& renderThreadContext : nextCtx.RenderThreadContextList)
+	{
+		if (renderThreadContext.ConstantBufferManager)
+		{
+			renderThreadContext.ConstantBufferManager->Reset();
+		}
+
+		if (renderThreadContext.GpuDescriptorAllocator)
+		{
+			renderThreadContext.GpuDescriptorAllocator->Reset();
+		}
+
+		if (renderThreadContext.CommandListPool)
+		{
+			renderThreadContext.CommandListPool->Reset();
+		}
+
+		if (renderThreadContext.RenderQueue)
+		{
+			renderThreadContext.RenderQueue->Reset();
+		}
+
+		renderThreadContext.RecordedCommandListArray.clear();
 	}
 
 	// 컨텍스트 전환
@@ -147,7 +231,7 @@ bool CD3D12Renderer::UpdateWindowSize(UINT backBufferWidth, UINT backBufferHeigh
 
 	// 모든 컨텍스트의 GPU 작업 완료 대기
 	SetFence();
-	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
+	for (DWORD i = 0; i < MaxPendingFrameCount; i++)
 	{
 		WaitForFenceValue(m_frameContexts[i].LastFenceValue);
 	}
@@ -159,7 +243,7 @@ bool CD3D12Renderer::UpdateWindowSize(UINT backBufferWidth, UINT backBufferHeigh
 
 	CleanupFramebufferResources();
 
-	if (FAILED(m_pSwapChain->ResizeBuffers(SWAP_CHAIN_FRAME_COUNT, backBufferWidth, backBufferHeight, DXGI_FORMAT_R8G8B8A8_UNORM, m_swapChainFlags)))
+	if (FAILED(m_pSwapChain->ResizeBuffers(SwapChainFrameCount, backBufferWidth, backBufferHeight, DXGI_FORMAT_R8G8B8A8_UNORM, m_swapChainFlags)))
 	{
 		__debugbreak();
 	}
@@ -183,7 +267,7 @@ bool CD3D12Renderer::UpdateWindowSize(UINT backBufferWidth, UINT backBufferHeigh
 
 	InitializeCamera();
 
-	return bResult = true;;
+	return bResult = true;
 }
 
 void* CD3D12Renderer::CreateBasicMeshObject()
@@ -213,7 +297,8 @@ void CD3D12Renderer::EndCreateMesh(void* pMeshObjectHandle)
 void CD3D12Renderer::RenderMeshObject(void* pMeshObjectHandle, const XMMATRIX& worldMatrix)
 {
 	CBasicMeshObject* pMeshObj = (CBasicMeshObject*)pMeshObjectHandle;
-	if (!pMeshObj || !m_renderQueue)
+	CRenderQueue* pRenderQueue = GetCurrentRenderQueue();
+	if (!pMeshObj || !pRenderQueue)
 	{
 		return;
 	}
@@ -223,16 +308,19 @@ void CD3D12Renderer::RenderMeshObject(void* pMeshObjectHandle, const XMMATRIX& w
 	renderItem.MeshItem.pMeshObject = pMeshObj;
 	renderItem.MeshItem.WorldMatrix = worldMatrix;
 
-	if (!m_renderQueue->Add(renderItem))
+	if (!pRenderQueue->Add(renderItem))
 	{
 		__debugbreak();
+		return;
 	}
+
+	AdvanceRenderThreadIndex();
 }
 
 void CD3D12Renderer::DeleteBasicMeshObject(void* pMeshObjectHandle)
 {
 	// wait for all commands
-	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
+	for (DWORD i = 0; i < MaxPendingFrameCount; i++)
 	{
 		WaitForFenceValue(m_frameContexts[i].LastFenceValue);
 	}
@@ -268,7 +356,7 @@ void* CD3D12Renderer::CreateSpriteObject(const WCHAR* wchTexFileName, int posX, 
 void CD3D12Renderer::DeleteSpriteObject(void* pSpriteObjectHandle)
 {
 	// wait for all commands
-	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
+	for (DWORD i = 0; i < MaxPendingFrameCount; i++)
 	{
 		WaitForFenceValue(m_frameContexts[i].LastFenceValue);
 	}
@@ -281,7 +369,8 @@ void CD3D12Renderer::RenderSpriteWithTex(void* pSpriteObjectHandle, int posX, in
 {
 	CSpriteObject* pSpriteObject = (CSpriteObject*)pSpriteObjectHandle;
 	TextureHandle* pTextureHandle = (TextureHandle*)pTexHandle;
-	if (!pSpriteObject || !pTextureHandle || !m_renderQueue)
+	CRenderQueue* pRenderQueue = GetCurrentRenderQueue();
+	if (!pSpriteObject || !pTextureHandle || !pRenderQueue)
 	{
 		return;
 	}
@@ -299,16 +388,20 @@ void CD3D12Renderer::RenderSpriteWithTex(void* pSpriteObjectHandle, int posX, in
 		renderItem.SpriteItem.SampleRect = *pRect;
 	}
 
-	if (!m_renderQueue->Add(renderItem))
+	if (!pRenderQueue->Add(renderItem))
 	{
 		__debugbreak();
+		return;
 	}
+
+	AdvanceRenderThreadIndex();
 }
 
 void CD3D12Renderer::RenderSprite(void* pSpriteObjectHandle, int posX, int posY, int width, int height, float z)
 {
 	CSpriteObject* pSpriteObject = (CSpriteObject*)pSpriteObjectHandle;
-	if (!pSpriteObject || !m_renderQueue)
+	CRenderQueue* pRenderQueue = GetCurrentRenderQueue();
+	if (!pSpriteObject || !pRenderQueue)
 	{
 		return;
 	}
@@ -320,10 +413,13 @@ void CD3D12Renderer::RenderSprite(void* pSpriteObjectHandle, int posX, int posY,
 	renderItem.SpriteItem.PixelSize = { static_cast<float>(width), static_cast<float>(height) };
 	renderItem.SpriteItem.Z = z;
 
-	if (!m_renderQueue->Add(renderItem))
+	if (!pRenderQueue->Add(renderItem))
 	{
 		__debugbreak();
+		return;
 	}
+
+	AdvanceRenderThreadIndex();
 }
 
 void CD3D12Renderer::UpdateTextureWithImage(void* pTexHandle, const BYTE* pSrcBits, UINT SrcWidth, UINT SrcHeight)
@@ -385,7 +481,7 @@ void* CD3D12Renderer::CreateTextureFromFile(const WCHAR* filePath)
 void CD3D12Renderer::DeleteTexture(void* pTextureHandle)
 {
 	// GPU 작업 완료 대기 (fence는 renderer 소유)
-	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
+	for (DWORD i = 0; i < MaxPendingFrameCount; i++)
 	{
 		WaitForFenceValue(m_frameContexts[i].LastFenceValue);
 	}
@@ -529,7 +625,7 @@ bool CD3D12Renderer::Initialize(HWND hWindow, bool bEnableDebugLayer, bool bEnab
 	//swapChainDesc.BufferDesc.RefreshRate.Numerator = m_uiRefreshRate;
 	//swapChainDesc.BufferDesc.RefreshRate.Denominator = 1;
 	SwapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	SwapChainDesc.BufferCount = SWAP_CHAIN_FRAME_COUNT;
+	SwapChainDesc.BufferCount = SwapChainFrameCount;
 	SwapChainDesc.SampleDesc.Count = 1;
 	SwapChainDesc.SampleDesc.Quality = 0;
 	SwapChainDesc.Scaling = DXGI_SCALING_NONE;
@@ -568,6 +664,19 @@ bool CD3D12Renderer::Initialize(HWND hWindow, bool bEnableDebugLayer, bool bEnab
 	m_viewportHeight = wndHeight;
 	// ~set viewport and scissor rect
 
+	UINT renderThreadCount = std::thread::hardware_concurrency();
+	if (renderThreadCount == 0)
+	{
+		renderThreadCount = 1;
+	}
+	if (renderThreadCount > MaxRenderThreadCount)
+	{
+		renderThreadCount = MaxRenderThreadCount;
+	}
+
+	m_renderThreadCount = renderThreadCount;
+	m_currentRenderThreadIndex = 0;
+
 	if (!InitializeFramebufferResources(wndWidth, wndHeight))
 	{
 		__debugbreak();
@@ -583,7 +692,7 @@ bool CD3D12Renderer::Initialize(HWND hWindow, bool bEnableDebugLayer, bool bEnab
 	InitializeCamera();
 
 	m_persistentCpuDescriptorAllocator = std::make_unique<CPersistentCpuDescriptorAllocator>();
-	m_persistentCpuDescriptorAllocator->Initialize(m_pD3DDevice, MAX_DESCRIPTOR_COUNT);
+	m_persistentCpuDescriptorAllocator->Initialize(m_pD3DDevice, MaxDescriptorCount);
 
 	m_resourceManager = std::make_unique<CD3D12ResourceManager>();
 	if (m_resourceManager->Initialize(m_pD3DDevice) == false)
@@ -592,10 +701,12 @@ bool CD3D12Renderer::Initialize(HWND hWindow, bool bEnableDebugLayer, bool bEnab
 		return false;
 	}
 	m_textureManager = std::make_unique<CTextureManager>();
-	m_textureManager->Initialize(this);
-
-	m_renderQueue = std::make_unique<CRenderQueue>();
-	if (!m_renderQueue->Initialize(this, MAX_DRAW_COUNT_PER_FRAME))
+	if (!m_textureManager || !m_textureManager->Initialize(this))
+	{
+		__debugbreak();
+		return false;
+	}
+	if (!InitializeRenderThreadPool())
 	{
 		__debugbreak();
 		return false;
@@ -638,42 +749,21 @@ bool CD3D12Renderer::InitializeFrameContexts()
 
 	for (FrameContext& ctx : m_frameContexts)
 	{
-		if (FAILED(m_pD3DDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&ctx.pCommandAllocator))))
-		{
-			__debugbreak();
-			return false;
-		}
-
-		if (FAILED(m_pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, ctx.pCommandAllocator, nullptr, IID_PPV_ARGS(&ctx.pCommandList))))
-		{
-			__debugbreak();
-			return false;
-		}
-
-		if (FAILED(ctx.pCommandList->Close()))
-		{
-			__debugbreak();
-			return false;
-		}
-
-		ctx.GpuDescriptorAllocator = std::make_unique<CFrameGpuDescriptorAllocator>();
-		if (!ctx.GpuDescriptorAllocator->Initialize(m_pD3DDevice, MAX_DRAW_COUNT_PER_FRAME * CBasicMeshObject::MaxDescriptorCountForDraw))
-		{
-			__debugbreak();
-			return false;
-		}
-
-		ctx.ConstantBufferManager = std::make_unique<CConstantBufferManager>();
-		if (!ctx.ConstantBufferManager->Initialize(m_pD3DDevice, MAX_DRAW_COUNT_PER_FRAME))
-		{
-			__debugbreak();
-			return false;
-		}
-
 		if (!InitializeCommandListPool(ctx))
 		{
 			__debugbreak();
 			return false;
+		}
+
+		ctx.RenderThreadContextList.clear();
+		ctx.RenderThreadContextList.resize(m_renderThreadCount);
+		for (RenderThreadContext& renderThreadContext : ctx.RenderThreadContextList)
+		{
+			if (!InitializeRenderThreadContext(renderThreadContext))
+			{
+				__debugbreak();
+				return false;
+			}
 		}
 	}
 
@@ -688,8 +778,92 @@ bool CD3D12Renderer::InitializeCommandListPool(FrameContext& ctx)
 		return false;
 	}
 
-	return ctx.CommandListPool->Initialize(m_pD3DDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, MAX_COMMAND_LIST_COUNT_PER_FRAME);
+	return ctx.CommandListPool->Initialize(m_pD3DDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, MaxCommandListCountPerFrame);
 }
+
+bool CD3D12Renderer::InitializeRenderThreadContext(RenderThreadContext& renderThreadContext)
+{
+	renderThreadContext.RenderQueue = std::make_unique<CRenderQueue>();
+	if (!renderThreadContext.RenderQueue ||
+		!renderThreadContext.RenderQueue->Initialize(this, MaxDrawCountPerFrame))
+	{
+		return false;
+	}
+
+	renderThreadContext.GpuDescriptorAllocator = std::make_unique<CFrameGpuDescriptorAllocator>();
+	if (!renderThreadContext.GpuDescriptorAllocator ||
+		!renderThreadContext.GpuDescriptorAllocator->Initialize(m_pD3DDevice, MaxDrawCountPerFrame * CBasicMeshObject::MaxDescriptorCountForDraw))
+	{
+		return false;
+	}
+
+	renderThreadContext.ConstantBufferManager = std::make_unique<CConstantBufferManager>();
+	if (!renderThreadContext.ConstantBufferManager ||
+		!renderThreadContext.ConstantBufferManager->Initialize(m_pD3DDevice, MaxDrawCountPerFrame))
+	{
+		return false;
+	}
+
+	renderThreadContext.CommandListPool = std::make_unique<CCommandListPool>();
+	if (!renderThreadContext.CommandListPool ||
+		!renderThreadContext.CommandListPool->Initialize(m_pD3DDevice, D3D12_COMMAND_LIST_TYPE_DIRECT, MaxCommandListCountPerFrame))
+	{
+		return false;
+	}
+
+	renderThreadContext.RecordedCommandListArray.clear();
+	renderThreadContext.RecordedCommandListArray.reserve(MaxCommandListCountPerFrame);
+	return true;
+}
+
+bool CD3D12Renderer::InitializeRenderThreadPool()
+{
+	CleanupRenderThreadPool();
+
+	if (m_renderThreadCount == 0)
+	{
+		return true;
+	}
+
+	m_renderThreadDescList.clear();
+	m_renderThreadDescList.resize(m_renderThreadCount);
+	for (DWORD threadIndex = 0; threadIndex < m_renderThreadCount; threadIndex++)
+	{
+		RenderThreadDesc& renderThreadDesc = m_renderThreadDescList[threadIndex];
+		renderThreadDesc.Renderer = this;
+		renderThreadDesc.ThreadIndex = threadIndex;
+		renderThreadDesc.CompleteEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+		if (!renderThreadDesc.CompleteEvent)
+		{
+			__debugbreak();
+			CleanupRenderThreadPool();
+			return false;
+		}
+
+		for (DWORD eventType = 0; eventType < RenderThreadEventTypeCount; eventType++)
+		{
+			renderThreadDesc.EventList[eventType] = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+			if (!renderThreadDesc.EventList[eventType])
+			{
+				__debugbreak();
+				CleanupRenderThreadPool();
+				return false;
+			}
+		}
+
+		unsigned int threadId = 0;
+		renderThreadDesc.ThreadHandle = reinterpret_cast<HANDLE>(_beginthreadex(nullptr, 0, RenderThread, &renderThreadDesc, 0, &threadId));
+		if (!renderThreadDesc.ThreadHandle)
+		{
+			__debugbreak();
+			CleanupRenderThreadPool();
+			return false;
+		}
+	}
+
+	return true;
+}
+
 bool CD3D12Renderer::InitializeFramebufferResources(UINT width, UINT height)
 {
 	assert(m_pD3DDevice != nullptr && m_pSwapChain != nullptr);
@@ -731,7 +905,7 @@ bool CD3D12Renderer::CreateFramebufferDescriptorHeaps()
 	}
 
 	D3D12_DESCRIPTOR_HEAP_DESC rtvDescriptorHeapDesc = {};
-	rtvDescriptorHeapDesc.NumDescriptors = SWAP_CHAIN_FRAME_COUNT;
+	rtvDescriptorHeapDesc.NumDescriptors = SwapChainFrameCount;
 	rtvDescriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 	rtvDescriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	if (FAILED(m_pD3DDevice->CreateDescriptorHeap(&rtvDescriptorHeapDesc, IID_PPV_ARGS(&m_pRtvDescriptorHeap))))
@@ -766,7 +940,7 @@ bool CD3D12Renderer::CreateRenderTargetViews()
 	}
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvDescriptorHandle(m_pRtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
-	for (UINT n = 0; n < SWAP_CHAIN_FRAME_COUNT; n++)
+	for (UINT n = 0; n < SwapChainFrameCount; n++)
 	{
 		if (FAILED(m_pSwapChain->GetBuffer(n, IID_PPV_ARGS(&m_pRenderTargets[n]))))
 		{
@@ -848,20 +1022,90 @@ void CD3D12Renderer::InitializeCamera()
 	m_projectionMatrix = XMMatrixPerspectiveFovLH(fovY, fAspectRatio, fNear, fFar);
 }
 
+CRenderQueue* CD3D12Renderer::GetCurrentRenderQueue() const
+{
+	if (m_renderThreadCount == 0)
+	{
+		return nullptr;
+	}
+
+	const FrameContext& ctx = m_frameContexts[m_currentContextIndex];
+	if (m_currentRenderThreadIndex >= ctx.RenderThreadContextList.size())
+	{
+		return nullptr;
+	}
+
+	return ctx.RenderThreadContextList[m_currentRenderThreadIndex].RenderQueue.get();
+}
+
+void CD3D12Renderer::AdvanceRenderThreadIndex()
+{
+	if (m_renderThreadCount == 0)
+	{
+		return;
+	}
+
+	m_currentRenderThreadIndex++;
+	m_currentRenderThreadIndex %= m_renderThreadCount;
+}
+
+void CD3D12Renderer::ProcessByThread(DWORD renderThreadIndex)
+{
+	FrameContext& ctx = m_frameContexts[m_currentContextIndex];
+	if (renderThreadIndex >= ctx.RenderThreadContextList.size())
+	{
+		__debugbreak();
+		return;
+	}
+
+	RenderThreadContext& renderThreadContext = ctx.RenderThreadContextList[renderThreadIndex];
+	renderThreadContext.RecordedCommandListArray.clear();
+
+	CRenderQueue* pRenderQueue = renderThreadContext.RenderQueue.get();
+	if (!pRenderQueue || pRenderQueue->GetItemCount() == 0)
+	{
+		return;
+	}
+
+	CCommandListPool* pCommandListPool = renderThreadContext.CommandListPool.get();
+	if (!pCommandListPool)
+	{
+		__debugbreak();
+		return;
+	}
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvDescriptorHandle(m_pRtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), m_currentRenderTargetIndex, m_rtvDescriptorSize);
+	D3D12_CPU_DESCRIPTOR_HANDLE dsvDescriptorHandle{ m_pDsvDescriptorHeap->GetCPUDescriptorHandleForHeapStart() };
+
+	pRenderQueue->Process(
+		renderThreadIndex,
+		pCommandListPool,
+		renderThreadContext.RecordedCommandListArray,
+		m_viewport,
+		m_scissorRect,
+		rtvDescriptorHandle,
+		dsvDescriptorHandle,
+		200);
+	pRenderQueue->Reset();
+}
+
 void CD3D12Renderer::Cleanup()
 {
 	// 모든 컨텍스트의 GPU 작업 완료 보장
 	SetFence();
-	for (DWORD i = 0; i < MAX_PENDING_FRAME_COUNT; i++)
+	for (DWORD i = 0; i < MaxPendingFrameCount; i++)
 	{
 		WaitForFenceValue(m_frameContexts[i].LastFenceValue);
 	}
 
 
+	CleanupRenderThreadPool();
+
 	m_textureManager = nullptr;
 	m_resourceManager = nullptr;
 	m_persistentCpuDescriptorAllocator = nullptr;
-	m_renderQueue = nullptr;
+	m_renderThreadCount = 1;
+	m_currentRenderThreadIndex = 0;
 
 	CleanupFramebufferResources();
 	CleanupFramebufferDescriptorHeaps();
@@ -922,27 +1166,65 @@ void CD3D12Renderer::CleanupFrameContexts()
 	for (FrameContext& ctx : m_frameContexts)
 	{
 		CleanupCommandListPool(ctx);
-		ctx.GpuDescriptorAllocator = nullptr;
-		ctx.ConstantBufferManager = nullptr;
+		for (RenderThreadContext& renderThreadContext : ctx.RenderThreadContextList)
+		{
+			CleanupRenderThreadContext(renderThreadContext);
+		}
+		ctx.RenderThreadContextList.clear();
 		ctx.LastFenceValue = 0;
 
-		if (ctx.pCommandList)
-		{
-			ctx.pCommandList->Release();
-			ctx.pCommandList = nullptr;
-		}
-
-		if (ctx.pCommandAllocator)
-		{
-			ctx.pCommandAllocator->Release();
-			ctx.pCommandAllocator = nullptr;
-		}
 	}
 }
 
 void CD3D12Renderer::CleanupCommandListPool(FrameContext& ctx)
 {
 	ctx.CommandListPool = nullptr;
+}
+
+void CD3D12Renderer::CleanupRenderThreadContext(RenderThreadContext& renderThreadContext)
+{
+	renderThreadContext.RecordedCommandListArray.clear();
+	renderThreadContext.RenderQueue = nullptr;
+	renderThreadContext.CommandListPool = nullptr;
+	renderThreadContext.GpuDescriptorAllocator = nullptr;
+	renderThreadContext.ConstantBufferManager = nullptr;
+}
+
+void CD3D12Renderer::CleanupRenderThreadPool()
+{
+	for (RenderThreadDesc& renderThreadDesc : m_renderThreadDescList)
+	{
+		if (renderThreadDesc.ThreadHandle && renderThreadDesc.EventList[RenderThreadEventTypeDestroy])
+		{
+			SetEvent(renderThreadDesc.EventList[RenderThreadEventTypeDestroy]);
+			WaitForSingleObject(renderThreadDesc.ThreadHandle, INFINITE);
+		}
+
+		if (renderThreadDesc.ThreadHandle)
+		{
+			CloseHandle(renderThreadDesc.ThreadHandle);
+			renderThreadDesc.ThreadHandle = nullptr;
+		}
+
+		for (DWORD eventType = 0; eventType < RenderThreadEventTypeCount; eventType++)
+		{
+			if (renderThreadDesc.EventList[eventType])
+			{
+				CloseHandle(renderThreadDesc.EventList[eventType]);
+				renderThreadDesc.EventList[eventType] = nullptr;
+			}
+		}
+
+		if (renderThreadDesc.CompleteEvent)
+		{
+			CloseHandle(renderThreadDesc.CompleteEvent);
+			renderThreadDesc.CompleteEvent = nullptr;
+		}
+
+		renderThreadDesc.Renderer = nullptr;
+	}
+
+	m_renderThreadDescList.clear();
 }
 
 void CD3D12Renderer::CleanupFramebufferResources()
@@ -977,16 +1259,4 @@ void CD3D12Renderer::CleanupFramebufferDescriptorHeaps()
 		m_pDsvDescriptorHeap = nullptr;
 	}
 }
-
-
-
-
-
-
-
-
-
-
-
-
 

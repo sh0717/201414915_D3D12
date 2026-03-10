@@ -24,7 +24,7 @@ private: /*function*/
 	bool InsertIndexedTriList(const WORD* pIndexList, UINT triCount, const WCHAR* texFileName);
 	void EndCreateMesh();
 
-	void Draw(ID3D12GraphicsCommandList* pCommandList, const XMMATRIX& worldMatrix);
+	void Draw(ID3D12GraphicsCommandList* pCommandList, DWORD renderThreadIndex, const XMMATRIX& worldMatrix);
 
 	void Clean();
 	void CleanSharedResource();
@@ -49,4 +49,3 @@ private: /*variable*/
 	UINT m_maxTriGroupCount = 0;
 	UINT m_triGroupCount = 0;
 };
-
