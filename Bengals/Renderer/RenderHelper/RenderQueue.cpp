@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include "RenderQueue.h"
+#include "CommandListPool.h"
 #include "../../../Util/D3DUtil.h"
 #include "../D3D12Renderer.h"
 #include "../RenderObject/BasicMeshObject.h"
@@ -31,9 +32,16 @@ bool CRenderQueue::Add(const RenderItem& pRenderItem)
 	return true;
 }
 
-UINT CRenderQueue::Process(ID3D12GraphicsCommandList* pCommandList)
+UINT CRenderQueue::Process(
+	CCommandListPool* pCommandListPool,
+	ID3D12CommandQueue* pCommandQueue,
+	const D3D12_VIEWPORT& viewport,
+	const D3D12_RECT& scissorRect,
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvDescriptorHandle,
+	D3D12_CPU_DESCRIPTOR_HANDLE dsvDescriptorHandle,
+	UINT processCountPerCommandList)
 {
-	if (!m_pRenderer || !pCommandList)
+	if (!m_pRenderer || !pCommandListPool || !pCommandQueue)
 	{
 		return 0;
 	}
@@ -44,71 +52,149 @@ UINT CRenderQueue::Process(ID3D12GraphicsCommandList* pCommandList)
 		return 0;
 	}
 
-	UINT processedItemCount = 0;
+	const UINT maxProcessCountPerCommandList =
+		(processCountPerCommandList == 0) ? static_cast<UINT>(m_itemList.size()) : processCountPerCommandList;
 
-	for (RenderItem& renderItem : m_itemList)
+	UINT commandListCapacity = 1;
+	if (processCountPerCommandList > 0)
 	{
-		switch (renderItem.Type)
+		commandListCapacity = (static_cast<UINT>(m_itemList.size()) + processCountPerCommandList - 1) / processCountPerCommandList;
+	}
+
+	std::vector<ID3D12CommandList*> commandListArray = {};
+	commandListArray.reserve(commandListCapacity);
+
+	ID3D12GraphicsCommandList* pCommandList = nullptr;
+	UINT processedItemCount = 0;
+	UINT processedItemCountPerCommandList = 0;
+
+	for (const RenderItem& renderItem : m_itemList)
+	{
+		if (!pCommandList)
 		{
-		case ERenderItemType::MeshObject:
-			if (!renderItem.MeshItem.pMeshObject)
+			pCommandList = pCommandListPool->GetCurrentCommandList();
+			if (!pCommandList)
 			{
-				continue;
+				__debugbreak();
+				return processedItemCount;
 			}
 
-			renderItem.MeshItem.pMeshObject->Draw(pCommandList, renderItem.MeshItem.WorldMatrix);
-			processedItemCount++;
-			break;
-
-		case ERenderItemType::Sprite:
-		{
-			CSpriteObject* pSpriteObject = renderItem.SpriteItem.pSpriteObject;
-			if (!pSpriteObject)
-			{
-				continue;
-			}
-
-			TextureHandle* pTextureHandle = renderItem.SpriteItem.pTexHandle;
-			if (pTextureHandle && pTextureHandle->pUploadBuffer && pTextureHandle->bUpdated)
-			{
-				UpdateTexture(pD3DDevice, pCommandList, pTextureHandle->TextureResource, pTextureHandle->pUploadBuffer);
-				pTextureHandle->bUpdated = false;
-			}
-
-			if (pTextureHandle)
-			{
-				const RECT* pRect = renderItem.SpriteItem.bUseRect ? &renderItem.SpriteItem.SampleRect : nullptr;
-				pSpriteObject->DrawWithTex(
-					pCommandList,
-					renderItem.SpriteItem.Pos,
-					renderItem.SpriteItem.PixelSize,
-					pRect,
-					renderItem.SpriteItem.Z,
-					pTextureHandle);
-			}
-			else
-			{
-				pSpriteObject->Draw(
-					pCommandList,
-					renderItem.SpriteItem.Pos,
-					renderItem.SpriteItem.PixelSize,
-					renderItem.SpriteItem.Z);
-			}
-
-			processedItemCount++;
-			break;
+			SetupCommandListForDraw(pCommandList, viewport, scissorRect, rtvDescriptorHandle, dsvDescriptorHandle);
 		}
 
-		default:
-			__debugbreak();
-			break;
+		if (!ProcessRenderItem(pCommandList, pD3DDevice, renderItem))
+		{
+			continue;
+		}
+
+		processedItemCount++;
+		processedItemCountPerCommandList++;
+
+		if (processedItemCountPerCommandList >= maxProcessCountPerCommandList)
+		{
+			pCommandListPool->Close();
+			commandListArray.push_back(pCommandList);
+			pCommandList = nullptr;
+			processedItemCountPerCommandList = 0;
 		}
 	}
 
+	if (pCommandList && processedItemCountPerCommandList > 0)
+	{
+		pCommandListPool->Close();
+		commandListArray.push_back(pCommandList);
+	}
+
+	if (!commandListArray.empty())
+	{
+		pCommandQueue->ExecuteCommandLists(static_cast<UINT>(commandListArray.size()), commandListArray.data());
+	}
+
 	return processedItemCount;
+}
+
+bool CRenderQueue::ProcessRenderItem(ID3D12GraphicsCommandList* pCommandList, ID3D12Device5* pD3DDevice, const RenderItem& renderItem)
+{
+	if (!pCommandList || !pD3DDevice)
+	{
+		return false;
+	}
+
+	switch (renderItem.Type)
+	{
+	case ERenderItemType::MeshObject:
+		if (!renderItem.MeshItem.pMeshObject)
+		{
+			return false;
+		}
+
+		renderItem.MeshItem.pMeshObject->Draw(pCommandList, renderItem.MeshItem.WorldMatrix);
+		return true;
+
+	case ERenderItemType::Sprite:
+	{
+		CSpriteObject* pSpriteObject = renderItem.SpriteItem.pSpriteObject;
+		if (!pSpriteObject)
+		{
+			return false;
+		}
+
+		TextureHandle* pTextureHandle = renderItem.SpriteItem.pTexHandle;
+		if (pTextureHandle && pTextureHandle->pUploadBuffer && pTextureHandle->bUpdated)
+		{
+			UpdateTexture(pD3DDevice, pCommandList, pTextureHandle->TextureResource, pTextureHandle->pUploadBuffer);
+			pTextureHandle->bUpdated = false;
+		}
+
+		if (pTextureHandle)
+		{
+			const RECT* pRect = renderItem.SpriteItem.bUseRect ? &renderItem.SpriteItem.SampleRect : nullptr;
+			pSpriteObject->DrawWithTex(
+				pCommandList,
+				renderItem.SpriteItem.Pos,
+				renderItem.SpriteItem.PixelSize,
+				pRect,
+				renderItem.SpriteItem.Z,
+				pTextureHandle);
+		}
+		else
+		{
+			pSpriteObject->Draw(
+				pCommandList,
+				renderItem.SpriteItem.Pos,
+				renderItem.SpriteItem.PixelSize,
+				renderItem.SpriteItem.Z);
+		}
+
+		return true;
+	}
+
+	default:
+		__debugbreak();
+		return false;
+	}
+}
+
+void CRenderQueue::SetupCommandListForDraw(
+	ID3D12GraphicsCommandList* pCommandList,
+	const D3D12_VIEWPORT& viewport,
+	const D3D12_RECT& scissorRect,
+	D3D12_CPU_DESCRIPTOR_HANDLE rtvDescriptorHandle,
+	D3D12_CPU_DESCRIPTOR_HANDLE dsvDescriptorHandle) const
+{
+	if (!pCommandList)
+	{
+		return;
+	}
+
+	pCommandList->RSSetViewports(1, &viewport);
+	pCommandList->RSSetScissorRects(1, &scissorRect);
+	pCommandList->OMSetRenderTargets(1, &rtvDescriptorHandle, FALSE, &dsvDescriptorHandle);
 }
 
 void CRenderQueue::Reset()
 {
 	m_itemList.clear();
 }
+
+

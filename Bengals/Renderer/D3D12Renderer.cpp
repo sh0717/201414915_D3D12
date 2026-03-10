@@ -63,19 +63,8 @@ void CD3D12Renderer::BeginRender()
 void CD3D12Renderer::EndRender()
 {
 	FrameContext& ctx = m_frameContexts[m_currentContextIndex];
-	if (!ctx.pCommandAllocator || !ctx.pCommandList)
-	{
-		__debugbreak();
-		return;
-	}
-
-	if (FAILED(ctx.pCommandAllocator->Reset()))
-	{
-		__debugbreak();
-		return;
-	}
-
-	if (FAILED(ctx.pCommandList->Reset(ctx.pCommandAllocator, nullptr)))
+	CCommandListPool* pCommandListPool = ctx.CommandListPool.get();
+	if (!pCommandListPool)
 	{
 		__debugbreak();
 		return;
@@ -83,30 +72,11 @@ void CD3D12Renderer::EndRender()
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE RTVDescriptorHandle(m_pRtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), m_currentRenderTargetIndex, m_rtvDescriptorSize);
 	D3D12_CPU_DESCRIPTOR_HANDLE DsvDescriptorHandle{ m_pDsvDescriptorHeap->GetCPUDescriptorHandleForHeapStart() };
-	ctx.pCommandList->RSSetViewports(1, &m_viewport);
-	ctx.pCommandList->RSSetScissorRects(1, &m_scissorRect);
-	ctx.pCommandList->OMSetRenderTargets(1, &RTVDescriptorHandle, FALSE, &DsvDescriptorHandle);
 
 	if (m_renderQueue)
 	{
-		m_renderQueue->Process(ctx.pCommandList);
+		m_renderQueue->Process(pCommandListPool, m_pCommandQueue, m_viewport, m_scissorRect, RTVDescriptorHandle, DsvDescriptorHandle, 200);
 		m_renderQueue->Reset();
-	}
-
-	if (FAILED(ctx.pCommandList->Close()))
-	{
-		__debugbreak();
-		return;
-	}
-
-	ID3D12CommandList* pCommandLists[] = { ctx.pCommandList };
-	m_pCommandQueue->ExecuteCommandLists(_countof(pCommandLists), pCommandLists);
-
-	CCommandListPool* pCommandListPool = ctx.CommandListPool.get();
-	if (!pCommandListPool)
-	{
-		__debugbreak();
-		return;
 	}
 
 	ID3D12GraphicsCommandList* pTransitionCommandList = pCommandListPool->GetCurrentCommandList();
@@ -1007,6 +977,7 @@ void CD3D12Renderer::CleanupFramebufferDescriptorHeaps()
 		m_pDsvDescriptorHeap = nullptr;
 	}
 }
+
 
 
 

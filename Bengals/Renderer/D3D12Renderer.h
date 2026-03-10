@@ -129,7 +129,7 @@ private:
 
 	static constexpr uint32_t SWAP_CHAIN_FRAME_COUNT = 3;
 	static constexpr uint32_t MAX_PENDING_FRAME_COUNT = SWAP_CHAIN_FRAME_COUNT - 1;
-	static constexpr uint32_t MAX_COMMAND_LIST_COUNT_PER_FRAME = 2;
+	static constexpr uint32_t MAX_COMMAND_LIST_COUNT_PER_FRAME = 256;
 	static constexpr uint32_t MAX_DRAW_COUNT_PER_FRAME = 4096;
 	static constexpr uint32_t MAX_DESCRIPTOR_COUNT = 4096;
 
@@ -173,6 +173,7 @@ private:
 	XMMATRIX m_viewMatrix = {};
 	XMMATRIX m_projectionMatrix = {};
 };
+
 
 
 
