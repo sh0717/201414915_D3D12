@@ -4,6 +4,7 @@
 #include "Game.h"
 #include "GameObject.h"
 #include "Types/typedef.h"
+#include <random>
 
 CGameObject::CGameObject()
 {
@@ -138,7 +139,13 @@ void* CGameObject::CreateBoxMesh()
 	{
 		const WORD worldPosIndex = worldPosIndexList[i];
 		vertexList[i].Position = worldPosList[worldPosIndex];
-		vertexList[i].Color = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+		std::mt19937 rng(std::random_device{}());
+		std::uniform_real_distribution<float> blueDist(0.0f, 1.0f);
+
+		float blue = blueDist(rng);
+
+		vertexList[i].Color = { 1.0f, 1.0f, blue, 1.0f };
 		vertexList[i].TexCoord = texCoordList[i];
 		indexList[i] = static_cast<WORD>(i);
 	}
